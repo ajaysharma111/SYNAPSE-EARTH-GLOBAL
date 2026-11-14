@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+!.env.example
+downloads/
+regions/*.synapsepack
+data/global_region_catalog.json
+
+data/*.sqlite3
+data/*.sqlite3-*

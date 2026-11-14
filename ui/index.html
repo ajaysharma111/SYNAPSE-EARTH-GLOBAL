@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>SYNAPSE EARTH | Global Emergency Intelligence</title>
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<style>
+:root{
+  --bg:#050c14;--bg2:#08131e;--panel:#0b1824;--panel2:#10222f;--panel3:#15303f;
+  --line:#1f3748;--line2:#2c4a5f;--text:#eaf3f7;--muted:#8fa8b9;--dim:#5f7d90;
+  --cyan:#46ddc6;--cyan-d:#0a8f85;--amber:#ffbf69;--red:#ff6b81;--green:#3ddc97;--blue:#6cb6ff;
+  --radius:14px;--radius-s:10px;
+  --font:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(ellipse at 50% -20%,#143247 0,#07111b 46%,#050c14 100%) fixed;color:var(--text);font:13px/1.45 var(--font);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- header ---------- */
+header{height:60px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 18px;background:#07131fee;border-bottom:1px solid var(--line);position:relative;z-index:1100}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,#0fb5a6,#076b78);box-shadow:0 0 0 1px #46ddc655,0 6px 18px #0a8f8555}
+.logo svg{width:20px;height:20px}
+.brand b{display:block;font-size:16px;letter-spacing:2.2px;font-weight:800}.brand b i{font-style:normal;color:var(--cyan)}
+.brand small{display:block;font-size:9px;letter-spacing:1.6px;color:var(--muted);white-space:nowrap}
+.chips{display:flex;gap:8px;align-items:center;flex-wrap:nowrap}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid var(--line2);border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.6px;color:var(--muted);background:#0a1a27;white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.chip.ok{color:#9bf0e0;border-color:#27665d}.chip.ok .dot{background:var(--cyan);box-shadow:0 0 0 3px #46ddc62a}
+.chip.warn{color:#ffd9a0;border-color:#70532c}.chip.warn .dot{background:var(--amber);box-shadow:0 0 0 3px #ffbf6926}
+.chip.sos{color:#ffc4cc;border-color:#7a3340}.chip.sos .dot{background:var(--red)}
+.chip strong{color:var(--text)}
+
+/* ---------- buttons / inputs ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border:1px solid transparent;border-radius:var(--radius-s);background:linear-gradient(135deg,#0ca598,#08756f);color:#fff;font-weight:700;cursor:pointer;transition:filter .15s,transform .15s,background .15s;white-space:nowrap}
+.btn:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
+.btn:active:not(:disabled){transform:none}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.alt{background:var(--panel3);border-color:var(--line2);color:#dbe9f0}
+.btn.ghost{background:transparent;border-color:var(--line2);color:#c8dbe5}
+.btn.warn{background:linear-gradient(135deg,#e0912e,#b36a15)}
+.btn.sm{padding:6px 10px;font-size:11px;border-radius:8px}
+.btn.block{width:100%}
+.btn.big{padding:13px 16px;font-size:14px}
+.btn .spin{width:14px;height:14px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+input,select{width:100%;padding:10px 11px;background:#06121c;border:1px solid var(--line2);border-radius:var(--radius-s);outline:none;font-size:12px}
+input:focus,select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px #46ddc620}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#8fa8b9 50%),linear-gradient(135deg,#8fa8b9 50%,transparent 50%);background-position:calc(100% - 17px) 50%,calc(100% - 12px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:30px}
+label.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--muted);margin:10px 0 5px;text-transform:uppercase}
+.row{display:flex;gap:8px}.row>*{flex:1;min-width:0}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:#06121c;border:1px solid var(--line2);border-radius:var(--radius-s);padding:3px;gap:3px}
+.seg button{border:0;background:transparent;color:var(--muted);padding:8px;border-radius:7px;font-weight:700;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--panel3);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)}
+
+/* ---------- layout ---------- */
+.shell{height:calc(100vh - 60px);height:calc(100dvh - 60px);display:grid;grid-template-columns:372px minmax(0,1fr) 330px;gap:12px;padding:12px}
+.panel{background:linear-gradient(160deg,#0d1e2b,#08131e 85%);border:1px solid var(--line);border-radius:var(--radius);overflow:auto;scrollbar-width:thin;scrollbar-color:#2c4a5f transparent}
+.panel-in{padding:6px 14px 16px}
+.card{padding:14px 0;border-bottom:1px solid var(--line)}
+.card:last-of-type{border-bottom:0}
+.card-h{display:flex;align-items:center;gap:9px;margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:1.4px;color:#a9c3d2;text-transform:uppercase}
+.card-h .n{display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:#12303e;color:var(--cyan);font-size:10px;letter-spacing:0}
+.card-h .grow{flex:1}
+.hint{font-size:11px;color:var(--muted);line-height:1.55}
+.hint b{color:#cfe2ec}
+.status{margin-top:9px;padding:9px 11px;border-radius:var(--radius-s);background:#0a1b27;border:1px solid var(--line);font-size:11px;line-height:1.55;color:#bcd0dc}
+.status.err{border-color:#7a3340;background:#241219;color:#ffc9d0}
+.status.good{border-color:#27665d;background:#0c211f;color:#a8f1e3}
+.status.warn{border-color:#70532c;background:#241c12;color:#ffdca4}
+.coords{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:9px}
+.coords div{background:#0a1b27;border:1px solid var(--line);border-radius:9px;padding:7px 9px}
+.coords small{display:block;font-size:9px;color:var(--dim);letter-spacing:.8px;font-weight:700}
+.coords span{font:600 12px var(--mono)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:6px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stat small{display:block;font-size:9px;font-weight:700;letter-spacing:.8px;color:var(--dim)}
+.stat strong{font:700 17px var(--mono)}
+.list{display:grid;gap:7px;margin-top:10px}
+.empty{padding:12px;border:1px dashed var(--line2);border-radius:var(--radius-s);color:var(--muted);font-size:11px;line-height:1.55;background:#09182400}
+
+/* zone cards */
+.zone{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);cursor:pointer;text-align:left;width:100%;transition:border-color .15s,background .15s}
+.zone:hover{border-color:var(--line2);background:#13293a}
+.zone[aria-selected=true]{border-color:var(--cyan);background:#0f2d33;box-shadow:0 0 0 3px #46ddc61c}
+.zbadge{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font:800 13px var(--mono);color:#04121a}
+.t-shelter{--tc:var(--green)}.t-refuge{--tc:var(--amber)}.t-medical{--tc:var(--red)}.t-other{--tc:#7fa1b6}
+.zbadge{background:var(--tc)}
+.zname{font-weight:700;font-size:12px;overflow-wrap:anywhere}
+.ztype{display:inline-block;margin-top:3px;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--tc)}
+.zmeta{margin-top:4px;font-size:10px;color:var(--muted);line-height:1.5}
+.zdist{text-align:right;font:700 12px var(--mono);color:#9bf0e0;white-space:nowrap}
+.zdist small{display:block;font:500 10px var(--font);color:var(--muted)}
+.tag{display:inline-block;margin:3px 4px 0 0;padding:2px 7px;border-radius:99px;font-size:9px;font-weight:700;border:1px solid var(--line2);color:#b5cad7}
+.tag.up{color:#9ff0c8;border-color:#27665d}.tag.down{color:#ffc4cc;border-color:#7a3340}.tag.dash{color:#ffdca4;border-color:#70532c}
+.detail{grid-column:1/-1;border-top:1px solid var(--line);margin-top:8px;padding-top:9px;cursor:default}
+.detail ol{margin:6px 0 8px;padding-left:20px;font-size:11px;color:#c5d7e2;max-height:150px;overflow:auto}
+.detail ol li{margin:2px 0}
+.detail .links{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.detail a{color:var(--cyan);font-size:11px;font-weight:700;text-decoration:none;padding:5px 9px;border:1px solid #27665d;border-radius:8px}
+.detail a:hover{background:#0c211f}
+.skeleton{height:62px;border-radius:12px;background:linear-gradient(100deg,#10222f 30%,#17323f 50%,#10222f 70%);background-size:200% 100%;animation:shimmer 1.3s infinite}
+.warning{margin-top:12px;padding:10px 11px;border-radius:var(--radius-s);background:#221b12;border:1px solid #6a4f29;color:#ffdca4;font-size:10.5px;line-height:1.55}
+
+/* agents */
+.agent{padding:10px 11px;margin:0 0 8px;background:var(--panel2);border:1px solid var(--line);border-radius:11px}
+.agent h4{margin:0 0 5px;font-size:11px;letter-spacing:.4px;display:flex;align-items:center;gap:7px}
+.agent h4 i{width:7px;height:7px;border-radius:50%;background:var(--cyan);display:inline-block}
+.agent h4 em{margin-left:auto;font-style:normal;font-size:9px;font-weight:700;color:var(--muted);border:1px solid var(--line2);border-radius:99px;padding:1px 7px}
+.agent dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:10.5px}
+.agent dt{color:var(--dim)}.agent dd{margin:0;color:#c9dbe5;overflow-wrap:anywhere}
+.agent ul{margin:4px 0 0;padding-left:16px;font-size:10.5px;color:#c9dbe5}
+.agent p{margin:0;font-size:10.5px;color:var(--muted)}
+
+/* ---------- map ---------- */
+.mapcol{position:relative;min-width:0;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;background:#07131d;box-shadow:0 14px 40px #0005}
+#map{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,#10293a 0,#08141f 100%);font-family:var(--font)}
+#map.picking{cursor:crosshair}
+.mapui{position:absolute;z-index:900;pointer-events:none}
+.mapui>*{pointer-events:auto}
+.map-top{left:12px;top:12px;display:flex;gap:8px;align-items:flex-start;max-width:calc(100% - 70px);flex-wrap:wrap}
+.glass{background:#07131fe6;backdrop-filter:blur(10px);border:1px solid var(--line2);border-radius:12px;box-shadow:0 8px 26px #0006}
+.searchbox{position:relative;width:240px}
+.searchbox input{background:transparent;border:0;padding:11px 12px 11px 34px;border-radius:12px}
+.searchbox svg{position:absolute;left:11px;top:11px;width:15px;height:15px;opacity:.6}
+.map-info{left:12px;bottom:26px;padding:10px 13px;max-width:min(330px,calc(100% - 24px))}
+.map-info b{display:block;font-size:12px}.map-info small{display:block;margin-top:2px;font-size:10px;color:var(--muted);line-height:1.45}
+.map-btns{right:12px;bottom:26px;display:flex;flex-direction:column;gap:8px}
+.map-btns .btn{box-shadow:0 8px 24px #0007}
+.legend{right:62px;bottom:26px;padding:8px 11px;display:flex;gap:11px;font-size:10px;color:#b9cdd9;flex-wrap:wrap;max-width:320px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.toasts{left:50%;top:14px;transform:translateX(-50%);display:grid;gap:8px;width:min(440px,calc(100% - 140px))}
+.toast{padding:10px 13px;border-radius:11px;background:#0b1d2af2;border:1px solid var(--line2);font-size:11.5px;box-shadow:0 10px 30px #0008;animation:rise .25s ease-out}
+.toast.err{border-color:#7a3340;background:#2a1219f2}.toast.ok{border-color:#27665d}
+.leaflet-container{background:transparent}
+.leaflet-control-attribution{background:#07131fcc!important;color:#7f9aab!important;font-size:9px!important}
+.leaflet-control-attribution a{color:#9fc9d8!important}
+.leaflet-bar a{background:#0b1d2af2;color:#dbe9f0;border-color:var(--line2)}
+.leaflet-bar a:hover{background:#15303f}
+.leaflet-control-layers{background:#07131fe6;color:#dbe9f0;border:1px solid var(--line2);border-radius:10px;font-size:11px}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#0b1d2a;color:var(--text);border:1px solid var(--line2)}
+.leaflet-popup-content{font:12px/1.5 var(--font);margin:11px 13px}
+.leaflet-popup-content button{margin-top:7px}
+.leaflet-tooltip{background:#0b1d2a;color:var(--text);border:1px solid var(--line2);font:11px var(--font)}
+.me{width:20px;height:20px;border-radius:50%;background:var(--cyan);border:3px solid #fff;box-shadow:0 0 0 0 #46ddc699;animation:pulse 2s infinite}
+.zm{width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:var(--tc);border:2px solid #fff;display:grid;place-items:center;box-shadow:0 4px 12px #0008}
+.zm span{transform:rotate(45deg);font:800 12px var(--mono);color:#04121a}
+.zm.sel{width:36px;height:36px;box-shadow:0 0 0 4px #46ddc655,0 4px 14px #000a}
+.country-tip{font-weight:700}
+.zlabel{background:#fff!important;color:#1b2733!important;border:0!important;box-shadow:0 2px 8px #0006!important;font:700 11px var(--font)!important;padding:3px 8px!important;max-width:170px;overflow:hidden;text-overflow:ellipsis;border-left:4px solid var(--tc)!important}.zlabel:before{display:none!important}
+.etabub{width:max-content;transform:translate(-50%,-135%);background:#fff;color:#1b2733;font:700 12px var(--font);padding:4px 9px;border-radius:99px;box-shadow:0 3px 10px #0007;white-space:nowrap;border:1px solid #cfd8de}
+.dir-eta{display:flex;align-items:baseline;gap:8px;margin-top:6px}.dir-eta strong{font-size:22px;color:#7fd0ff}.dir-eta span{color:#b9cdd9;font-size:12px}
+.dir-steps{margin:8px 0 0;padding-left:20px;max-height:170px;overflow:auto;font-size:11px;color:#d4e3ec}.dir-steps li{margin:3px 0}
+.map-info{pointer-events:auto}
+
+/* ---------- auth modal ---------- */
+.modal{position:fixed;inset:0;z-index:2000;display:none;align-items:center;justify-content:center;padding:16px;background:#020911dd;backdrop-filter:blur(3px)}
+.modal.open{display:flex}
+.modal-card{width:min(420px,100%);background:#0c1c29;border:1px solid var(--line2);border-radius:16px;padding:22px;box-shadow:0 24px 80px #000a}
+.modal-card h2{margin:0 0 6px;font-size:18px}.modal-card p{margin:0 0 6px;color:var(--muted);font-size:12px}
+.modal-card .btn{margin-top:10px}
+.authmsg{min-height:18px;margin-top:8px;font-size:11px;color:var(--amber)}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{to{background-position:-200% 0}}
+@keyframes pulse{70%{box-shadow:0 0 0 16px #46ddc600}100%{box-shadow:0 0 0 0 #46ddc600}}
+@keyframes rise{from{opacity:0;transform:translateY(-6px)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- responsive ---------- */
+@media(max-width:1240px){.shell{grid-template-columns:350px minmax(0,1fr)}.shell>aside:last-child{display:none}.shell.show-right>aside:last-child{display:block;position:fixed;inset:70px 10px 10px auto;width:min(360px,calc(100% - 20px));z-index:1500;box-shadow:0 20px 60px #000b}.legend{display:none}}
+@media(max-width:900px){
+  header{height:auto;min-height:60px;flex-wrap:wrap;padding:8px 12px}.brand small{display:none}.chips{flex-wrap:wrap}.chip.hide-m{display:none}
+  .shell{height:auto;display:flex;flex-direction:column;padding:8px;gap:8px}
+  .mapcol{order:-1;height:58vh;height:58dvh;min-height:380px;position:sticky;top:0;z-index:5}
+  .panel{overflow:visible}
+  .searchbox{width:170px}.map-top{max-width:calc(100% - 66px)}
+  .toasts{width:calc(100% - 100px)}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
+    <div><b>SYNAPSE <i>EARTH</i></b><small>GLOBAL OFFLINE DISASTER RESPONSE INTELLIGENCE</small></div>
+  </div>
+  <div class="chips">
+    <span class="chip" id="netChip"><span class="dot"></span><span id="netLabel">CHECKING NETWORK</span></span>
+    <span class="chip hide-m" id="locChip"><span class="dot"></span><span id="locLabel">LOCATION OFF</span></span>
+    <span class="chip sos" title="Emergency number for your detected country"><span class="dot"></span>EMERGENCY <strong id="sosNumber">112</strong></span>
+    <button class="btn alt sm" id="authOpen" type="button">Sign in</button>
+    <button class="btn ghost sm hide-m" id="toggleRight" type="button" style="display:none">AI agents</button>
+  </div>
+</header>
+
+<div class="shell" id="shell">
+<!-- ============ LEFT: workflow ============ -->
+<aside class="panel" aria-label="Controls"><div class="panel-in">
+
+  <section class="card" id="cardLocate">
+    <h3 class="card-h"><span class="n">1</span>Your location</h3>
+    <button class="btn big block" id="gpsDetect" type="button"><span class="ico">◎</span><span id="gpsLabel">Detect my location</span></button>
+    <div class="row" style="margin-top:8px">
+      <button class="btn alt sm" id="ipLocate" type="button" title="City-level location from your internet connection">Approximate (IP)</button>
+      <button class="btn alt sm" id="pickOnMap" type="button">Pick on map</button>
+    </div>
+    <form id="manualForm" style="margin-top:8px;display:flex;gap:7px" autocomplete="off">
+      <input id="manualInput" placeholder="Place name or lat, lon" aria-label="Place name or coordinates">
+      <button class="btn alt sm" type="submit" style="flex:0 0 auto">Go</button>
+    </form>
+    <div id="manualResults" class="list" style="margin-top:6px"></div>
+    <div id="gpsStatus" class="status" role="status" aria-live="polite">Press <b>Detect my location</b> and allow the browser permission prompt. Nothing is sent anywhere except this local server.</div>
+    <div class="coords"><div><small>LAT</small><span id="cLat">—</span></div><div><small>LON</small><span id="cLon">—</span></div><div><small>ACCURACY</small><span id="cAcc">—</span></div></div>
+    <div id="placeName" class="hint" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card" id="cardSafe">
+    <h3 class="card-h"><span class="n">2</span>Safer zones &amp; routes</h3>
+    <label class="lbl" for="kind">Hazard</label>
+    <select id="kind"><option>Flood</option><option>Earthquake</option><option>Wildfire</option><option>Cyclone</option><option>Landslide</option><option>Infrastructure failure</option></select>
+    <label class="lbl">Travel mode</label>
+    <div class="seg" role="group" aria-label="Travel mode"><button type="button" id="modeFoot" aria-pressed="true">🚶 Walking</button><button type="button" id="modeCar" aria-pressed="false">🚗 Driving</button></div>
+    <button class="btn block" id="autoEvacuate" type="button" style="margin-top:12px"><span>⛨</span> Find safer shelters &amp; routes</button>
+    <div id="routeStatus" class="hint" style="margin-top:8px">Detect your location first. Routes use installed offline roads when available, otherwise online OpenStreetMap routing.</div>
+    <div id="zoneList" class="list" role="listbox" aria-label="Safer zone candidates"></div>
+    <div class="warning">Candidates are <b>mapped records</b>, not verified shelters. Opening status, capacity, closures and hazard exposure are unknown. Follow instructions from local emergency authorities.</div>
+  </section>
+
+  <section class="card">
+    <h3 class="card-h"><span class="n">3</span>Nearby services <span class="grow"></span><button class="btn alt sm" id="nearbyRefresh" type="button">Refresh</button></h3>
+    <div id="nearbyServices" class="list" style="margin-top:0"><div class="empty">Detect your location to list hospitals, shelters and emergency facilities from installed regional data.</div></div>
+  </section>
+
+  <section class="card">
+    <h3 class="card-h"><span class="n">4</span>Offline maps &amp; data</h3>
+    <div class="stats">
+      <div class="stat"><small>COUNTRIES</small><strong id="countries">—</strong></div>
+      <div class="stat"><small>REGIONS</small><strong id="regions">0</strong></div>
+      <div class="stat"><small>ROAD NODES</small><strong id="nodes">0</strong></div>
+      <div class="stat"><small>ROAD SEGMENTS</small><strong id="edges">0</strong></div>
+    </div>
+    <label class="lbl" for="region">Installed regional package</label>
+    <select id="region"><option value="">No regional package selected</option></select>
+    <p id="coverage" class="hint" style="margin:7px 0 0">The world map and country boundaries work offline. Road, shelter and settlement detail comes from regional packages.</p>
+    <label class="lbl" for="catalogSearch">Download a region for offline use</label>
+    <input id="catalogSearch" type="search" placeholder="Search country, state or province…">
+    <select id="catalogRegion" style="margin-top:7px" aria-label="Catalogue region"><option value="">Load the catalogue while online…</option></select>
+    <div class="row" style="margin-top:7px"><button class="btn alt sm" id="catalogLoad" type="button">Browse catalogue</button><button class="btn alt sm" id="catalogInstall" type="button">Install selected</button></div>
+    <div id="catalogStatus" class="hint" style="margin-top:7px">Regional maps can be downloaded automatically and kept on this device for offline use.</div>
+    <label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="autoRegion" type="checkbox" checked style="width:auto"> Automatically download my regional map when online (pauses if mobile data is detected; 500 MB limit)</label>
+    <label class="lbl" for="bulkScope">Bulk install (background queue)</label>
+    <select id="bulkScope"><option value="me">Smallest extract around my location</option><option value="country">All extracts in my country</option><option value="world">Whole world — every extract</option></select>
+    <div class="row" style="margin-top:7px;align-items:center"><label class="lbl" for="bulkMax" style="margin:0;flex:1.4">Max size / extract (MB)</label><input id="bulkMax" type="number" min="20" max="5000" value="300"></div>
+    <div class="row" style="margin-top:7px"><button class="btn sm" id="bulkStart" type="button">Install all in scope</button><button class="btn warn sm" id="bulkCancel" type="button" hidden>Cancel</button></div>
+    <div id="bulkInfo" class="hint" style="margin-top:7px">Runs on the server one extract at a time, skips ones already installed or over the size limit, and keeps going if one fails.</div>
+    <div id="bulkBar" style="height:6px;border-radius:99px;background:#06121c;border:1px solid var(--line2);margin-top:7px;overflow:hidden" hidden><div id="bulkFill" style="height:100%;width:0;background:linear-gradient(90deg,#0ca598,#46ddc6);transition:width .4s"></div></div>
+    <div id="bulkList" class="list" style="margin-top:7px"></div>
+    <label class="lbl" for="placeSearch">Search installed settlements</label>
+    <input id="placeSearch" placeholder="City, town, village…">
+    <div id="places" class="hint" style="margin-top:6px"></div>
+    <button class="btn alt sm block" id="refresh" type="button" style="margin-top:9px">Refresh installed regions</button>
+  </section>
+</div></aside>
+
+<!-- ============ CENTRE: map ============ -->
+<section class="mapcol" aria-label="Map">
+  <div id="map" tabindex="0"></div>
+  <div class="mapui map-top">
+    <div class="glass searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="#cfe2ec" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="countrySearch" placeholder="Find a country…" aria-label="Find a country" autocomplete="off"></div>
+    <span class="chip glass" id="tileChip"><span class="dot"></span><span id="tileLabel">MAP</span></span>
+  </div>
+  <div class="mapui toasts" id="toasts" aria-live="polite"></div>
+  <div class="mapui glass map-info"><b id="infoTitle">World overview</b><small id="infoSub">Click a country to inspect it, or detect your location to find safer zones.</small><div id="infoEta" class="dir-eta" hidden></div><button class="btn alt sm" id="infoStepsBtn" type="button" hidden style="margin-top:8px">Show directions</button><ol id="infoSteps" class="dir-steps" hidden></ol></div>
+  <div class="mapui map-btns">
+    <button class="btn alt" id="btnMe" type="button" title="Centre on my location" aria-label="Centre on my location">◎</button>
+    <button class="btn alt" id="btnWorld" type="button" title="Whole world" aria-label="Show whole world">🌍</button>
+  </div>
+  <div class="mapui glass legend"><span><i style="background:var(--cyan)"></i>You</span><span><i style="background:var(--green)"></i>Shelter</span><span><i style="background:var(--amber)"></i>Refuge bldg</span><span><i style="background:var(--red)"></i>Medical</span><span><i style="background:#1a73e8"></i>Route</span></div>
+</section>
+
+<!-- ============ RIGHT: AI agents ============ -->
+<aside class="panel" aria-label="AI agents"><div class="panel-in">
+  <section class="card">
+    <h3 class="card-h"><span class="n">5</span>Incident assessment</h3>
+    <label class="lbl" for="severity">Severity</label>
+    <select id="severity"><option value="1">1 · Low</option><option value="2">2 · Guarded</option><option value="3" selected>3 · Elevated</option><option value="4">4 · Severe</option><option value="5">5 · Critical</option></select>
+    <button class="btn block" id="analyze" type="button" style="margin-top:10px">Run AI-agent assessment</button>
+  </section>
+  <section class="card">
+    <h3 class="card-h"><span class="n">6</span>Specialist agents</h3>
+    <div id="agents">
+      <div class="agent"><h4><i></i>Coverage Agent</h4><p>Checks map package, source date, road graph and settlement coverage.</p></div>
+      <div class="agent"><h4><i></i>Hazard Agent</h4><p>Normalises the operator-selected incident and severity.</p></div>
+      <div class="agent"><h4><i></i>Infrastructure Agent</h4><p>Inspects mapped facilities; never infers status or capacity.</p></div>
+      <div class="agent"><h4><i></i>Route Agent</h4><p>Summarises candidate routes or reports that none exist.</p></div>
+      <div class="agent"><h4><i></i>Response Coordinator</h4><p>Builds a human-reviewed action checklist.</p></div>
+    </div>
+  </section>
+  <section class="card"><h3 class="card-h"><span class="n">7</span>Response decision</h3>
+    <div id="summary" class="status" style="margin-top:0">Awaiting incident. Run the assessment to see the checklist.</div>
+    <div class="warning">AI output is decision support only. Confirm hazards, closures, shelters and routes with emergency authorities.</div>
+  </section>
+</div></aside>
+</div>
+
+<!-- ============ account modal ============ -->
+<div class="modal" id="authPanel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <div class="modal-card">
+    <h2 id="authTitle">Sign in to SYNAPSE EARTH</h2>
+    <p>Accounts are optional. Emergency guest access always works without registration or internet.</p>
+    <div id="nameWrap" style="display:none"><label class="lbl" for="authName">Name</label><input id="authName" autocomplete="name" placeholder="Your name"></div>
+    <label class="lbl" for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
+    <label class="lbl" for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 12 characters">
+    <div class="row"><button class="btn" id="authSubmit" type="button">Sign in</button><button class="btn alt" id="authToggle" type="button">Create account</button></div>
+    <button class="btn ghost block" id="authClose" type="button">Continue as guest</button>
+    <div class="authmsg" id="authMessage" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<script src="/vendor/leaflet.js"></script>
+<script>
+'use strict';
+/* =====================================================================
+   SYNAPSE EARTH UI  — v15
+   Every handler is bound defensively (bind()), so one missing element or one failing
+   feature can never stop the rest of the page from working (this was the v14 bug:
+   a stale $('route') lookup threw and aborted the whole script).
+   ===================================================================== */
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{return localStorage.getItem(k)??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+function bind(id,evt,fn){const e=$(id);if(!e){console.warn('missing element',id);return}e.addEventListener(evt,async ev=>{try{await fn(ev)}catch(err){reportError(err)}})}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function toast(msg,kind='',ms=5200){const t=el('div','toast '+kind,msg);$('toasts').append(t);setTimeout(()=>t.remove(),ms)}
+function reportError(err){console.error(err);toast('Something went wrong: '+(err&&err.message||err),'err',7000)}
+window.addEventListener('error',e=>toast('Unexpected error: '+e.message,'err',7000));
+window.addEventListener('unhandledrejection',e=>toast('Unexpected error: '+(e.reason&&e.reason.message||e.reason),'err',7000));
+async function api(url,opts={},timeout=30000){
+  const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),timeout);
+  try{
+    const r=await fetch(url,{cache:'no-store',...opts,signal:ctl.signal});
+    let j=null;try{j=await r.json()}catch(e){}
+    if(!r.ok)throw new Error((j&&(j.error||j.message))||('HTTP '+r.status));
+    return j;
+  }catch(e){if(e.name==='AbortError')throw new Error('Request timed out');throw e}
+  finally{clearTimeout(t)}
+}
+const fmtDist=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+' km':Math.round(m)+' m';
+const fmtDur=s=>{const m=Math.max(1,Math.round(s/60));return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min'};
+const S={loc:null,pkg:null,nodes:null,zones:[],unavailable:new Set(),sel:-1,mode:'foot',countries:[],cc:'',pick:false,detectId:0,busy:false};
+
+/* ============================== MAP ============================== */
+const map=L.map('map',{worldCopyJump:true,minZoom:2,maxZoom:19,zoomControl:false,zoomSnap:.5,preferCanvas:true,attributionControl:true}).setView([20,10],2);
+L.control.zoom({position:'topright'}).addTo(map);
+map.createPane('offlineWorld').style.zIndex=150;
+map.createPane('zones').style.zIndex=650;map.createPane('bubble').style.zIndex=720;
+const attrOSM='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const attrEsri='Tiles © Esri — Source: Esri, HERE, Garmin, OpenStreetMap contributors';
+const bases={
+  'Streets':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:attrOSM}),
+  'Esri streets':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:attrEsri}),
+  'Satellite':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles © Esri — Esri, Maxar, Earthstar Geographics'}),
+  'Dark gray':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,attribution:attrEsri}),
+};
+const countryLayer=L.layerGroup().addTo(map);       // offline country boundaries (always works)
+const roadLayer=L.layerGroup().addTo(map);          // installed regional roads + settlements
+const zoneLayer=L.layerGroup().addTo(map);          // shelters + routes
+const meLayer=L.layerGroup().addTo(map);
+const selLayer=L.layerGroup().addTo(map);
+const layersCtl=L.control.layers(bases,{'Offline country boundaries':countryLayer,'Installed roads & places':roadLayer},{position:'topright',collapsed:true}).addTo(map);
+let activeBase=null,tileOK=0,tileBad=0;
+function setBase(name){
+  if(activeBase)map.removeLayer(activeBase);
+  activeBase=name&&bases[name]?bases[name]:null;
+  if(activeBase)activeBase.addTo(map);
+  store.set('synapse.base2',name||'');updateTileChip();
+}
+Object.entries(bases).forEach(([n,l])=>{
+  l.on('tileload',()=>{tileOK++;updateTileChip()});
+  l.on('tileerror',()=>{tileBad++;updateTileChip()});
+});
+map.on('baselayerchange',e=>{activeBase=e.layer;store.set('synapse.base2',e.name);tileOK=tileBad=0;updateTileChip()});
+function updateTileChip(){
+  const c=$('tileChip'),l=$('tileLabel');
+  if(!activeBase){c.className='chip glass';l.textContent='OFFLINE VECTOR MAP';return}
+  if(tileBad>=4&&tileOK===0){c.className='chip glass warn';l.textContent='TILES UNREACHABLE · OFFLINE VECTOR MAP';if(!updateTileChip.warned){updateTileChip.warned=1;toast('Online map tiles are unreachable. Showing the offline country map; routing and shelters from installed data still work.','',7000)}return}
+  c.className='chip glass ok';l.textContent='ONLINE TILES';
+}
+// Restore a valid saved basemap. An empty saved value means the app was
+// previously offline; when online, prefer Streets instead of remaining blank.
+let savedBase=store.get('synapse.base2',null);
+if(typeof savedBase!=='string'||!savedBase.trim()||!bases[savedBase])savedBase=null;
+setBase(navigator.onLine?(savedBase||'Streets'):'');
+
+
+/* ---- world countries (offline GeoJSON) ---- */
+const nm=f=>f.properties.ADMIN||f.properties.NAME||f.properties.name||'Unknown';
+function ringHas(r,x,y){let ins=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])ins=!ins}return ins}
+function polyHas(poly,x,y){return ringHas(poly[0],x,y)&&!poly.slice(1).some(h=>ringHas(h,x,y))}
+function featHas(f,lon,lat){const g=f.geometry;if(!g)return false;const ps=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];return ps.some(p=>polyHas(p,lon,lat))}
+function countryAt(lon,lat){lon=((lon+540)%360)-180;return S.countries.find(f=>featHas(f,lon,lat))||null}
+async function loadWorld(){
+  try{
+    const j=await api('/api/world',{},60000);
+    S.countries=j.features;$('countries').textContent=S.countries.length;
+    L.geoJSON(j,{pane:'offlineWorld',interactive:false,style:{color:'#4a6d84',weight:.7,fillColor:'#183a4e',fillOpacity:1}}).addTo(countryLayer);
+    toast('World map ready · '+S.countries.length+' countries stored locally','ok',3000);
+  }catch(e){
+    $('countries').textContent='0';
+    toast('World boundaries not installed ('+e.message+'). Online tiles still show the world; run scripts/download_world_map.py while online for offline use.','err',9000);
+  }
+}
+function selectCountry(f,fly=true){
+  selLayer.clearLayers();if(!f)return;
+  const g=L.geoJSON(f,{interactive:false,style:{color:'#46ddc6',weight:2,fillColor:'#46ddc6',fillOpacity:.14}}).addTo(selLayer);
+  $('infoEta').hidden=true;$('infoStepsBtn').hidden=true;$('infoSteps').hidden=true;
+  $('infoTitle').textContent=nm(f);
+  $('infoSub').textContent=[f.properties.CONTINENT,f.properties.SUBREGION].filter(Boolean).join(' · ')+' · Detect your location for local shelter detail.';
+  const iso=f.properties.ISO_A2&&f.properties.ISO_A2!=='-99'?f.properties.ISO_A2:'';
+  if(iso)setCountryCode(iso);
+  if(fly){try{map.flyToBounds(g.getBounds(),{padding:[30,30],maxZoom:6,duration:.8})}catch(e){}}
+}
+bind('countrySearch','input',()=>{
+  const q=$('countrySearch').value.trim().toLowerCase();if(q.length<2)return;
+  const f=S.countries.find(x=>nm(x).toLowerCase().startsWith(q))||S.countries.find(x=>nm(x).toLowerCase().includes(q));
+  if(f)selectCountry(f);
+});
+
+/* ---- map interaction ---- */
+map.on('click',e=>{
+  const ll=map.wrapLatLng(e.latlng);
+  if(S.pick){setPick(false);applyLocation({lat:ll.lat,lon:ll.lng,accuracy:0,source:'map'});return}
+  const f=countryAt(ll.lng,ll.lat);if(f)selectCountry(f,false);
+  const box=el('div');
+  box.append(el('b',null,f?nm(f):'Open water / unmapped'),el('div',null,ll.lat.toFixed(5)+', '+ll.lng.toFixed(5)));
+  const b=el('button','btn sm','Use as my location');b.onclick=()=>{map.closePopup();applyLocation({lat:ll.lat,lon:ll.lng,accuracy:0,source:'map'})};
+  box.append(b);L.popup({closeButton:false}).setLatLng(e.latlng).setContent(box).openOn(map);
+});
+function setPick(on){S.pick=on;$('map').classList.toggle('picking',on);$('pickOnMap').textContent=on?'Click the map…':'Pick on map';if(on)toast('Click the map exactly where you are.','',4000)}
+bind('pickOnMap','click',()=>setPick(!S.pick));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){setPick(false);$('authPanel').classList.remove('open')}});
+bind('btnWorld','click',()=>map.flyTo([20,10],2,{duration:.8}));
+bind('btnMe','click',()=>{if(S.loc)map.flyTo([S.loc.lat,S.loc.lon],Math.max(map.getZoom(),13),{duration:.8});else toast('No location yet. Press “Detect my location”.')});
+
+/* ---- installed roads / places overlay ---- */
+let roadTimer=null;
+function scheduleRoads(){clearTimeout(roadTimer);roadTimer=setTimeout(drawRoads,180)}
+function drawRoads(){
+  roadLayer.clearLayers();
+  if(!S.pkg||!map.hasLayer(roadLayer)||map.getZoom()<11)return;
+  const b=map.getBounds().pad(.15),lines=[];
+  for(const e of S.pkg.edges){const a=S.nodes[e.from],c=S.nodes[e.to];if(!a||!c)continue;
+    if(!b.contains([a.lat,a.lon])&&!b.contains([c.lat,c.lon]))continue;
+    lines.push([[a.lat,a.lon],[c.lat,c.lon]]);if(lines.length>14000)break}
+  if(lines.length)L.polyline(lines,{color:'#e9ad5b',weight:1.3,opacity:.65,interactive:false}).addTo(roadLayer);
+  if(map.getZoom()>=10){let n=0;for(const p of S.pkg.places||[]){if(!b.contains([p.lat,p.lon]))continue;
+    L.circleMarker([p.lat,p.lon],{radius:p.place_type==='city'?5:3,color:'#0a1a27',weight:1,fillColor:'#72e5d0',fillOpacity:.95}).bindTooltip(p.name+' · '+p.place_type).addTo(roadLayer);if(++n>300)break}}
+}
+map.on('moveend',scheduleRoads);map.on('overlayadd overlayremove',scheduleRoads);
+
+/* ============================== LOCATION ============================== */
+function setCountryCode(cc){
+  cc=(cc||'').toUpperCase();if(!cc||cc===S.cc)return;S.cc=cc;
+  api('/api/emergency-number?cc='+encodeURIComponent(cc),{},6000).then(j=>{const n=j.number||'112';$('sosNumber').textContent=n.length>14?'112 / local':n;$('sosNumber').parentElement.title='Emergency number: '+n}).catch(()=>{});
+}
+function setGpsStatus(msg,kind=''){const e=$('gpsStatus');e.className='status'+(kind?' '+kind:'');e.innerHTML='';
+  if(Array.isArray(msg))msg.forEach(m=>e.append(typeof m==='string'?document.createTextNode(m):m));else e.textContent=msg}
+function setLocChip(kind,text){$('locChip').className='chip hide-m '+kind;$('locLabel').textContent=text}
+function getPos(opts){
+  return new Promise((res,rej)=>{
+    let done=false;
+    // Hard guard: some browsers never call either callback.
+    const guard=setTimeout(()=>{if(!done){done=true;rej({code:3,message:'timeout (no response from browser)'})}},opts.timeout+3000);
+    navigator.geolocation.getCurrentPosition(p=>{if(done)return;done=true;clearTimeout(guard);res(p)},e=>{if(done)return;done=true;clearTimeout(guard);rej(e)},opts);
+  });
+}
+function setBusy(b,label){S.busy=b;const btn=$('gpsDetect');btn.disabled=b;btn.querySelector('.ico').outerHTML=b?'<span class="spin ico"></span>':'<span class="ico">◎</span>';$('gpsLabel').textContent=b?(label||'Locating…'):(S.loc?'Detect again':'Detect my location')}
+function deniedHelp(){
+  const w=el('span');w.append('Location permission is blocked for this site. Click the lock/site-controls icon next to the address bar → Location → Allow, then press Detect again. On macOS also enable System Settings → Privacy & Security → Location Services for your browser. ');
+  return w;
+}
+async function detect(){
+  if(S.busy)return;const id=++S.detectId;
+  setPick(false);
+  const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
+  if(!window.isSecureContext&&!local){setGpsStatus('GPS needs a secure page. Open http://localhost:8080 on this computer (a plain-HTTP LAN IP is blocked by the browser), or use “Approximate (IP)” / “Pick on map”.','err');return}
+  if(!('geolocation' in navigator)){setGpsStatus('This browser has no geolocation API. Trying approximate location…','warn');return ipLocate()}
+  setBusy(true,'Locating…');setLocChip('warn','LOCATING…');
+  setGpsStatus('Requesting precise GPS — please allow the browser permission prompt…');
+  let pos=null,lastErr=null;
+  try{pos=await getPos({enableHighAccuracy:true,timeout:12000,maximumAge:0})}
+  catch(e1){
+    lastErr=e1;
+    if(e1.code!==1){
+      if(id!==S.detectId)return;
+      setGpsStatus('Precise GPS unavailable ('+(e1.message||'no fix')+'). Trying network location…','warn');
+      try{pos=await getPos({enableHighAccuracy:false,timeout:15000,maximumAge:300000});lastErr=null}catch(e2){lastErr=e2}
+    }
+  }
+  if(id!==S.detectId)return;
+  if(pos){
+    setBusy(false);
+    return applyLocation({lat:pos.coords.latitude,lon:pos.coords.longitude,accuracy:Math.round(pos.coords.accuracy||0),source:'gps'});
+  }
+  setBusy(false);$('gpsLabel').textContent='Try again';setLocChip('warn','LOCATION UNAVAILABLE');
+  if(lastErr&&lastErr.code===1){
+    const w=deniedHelp();w.append('Meanwhile you can use “Approximate (IP)”, “Pick on map”, or type a place name.');
+    setGpsStatus([w],'err');
+  }else{
+    // Position unavailable / timeout (Brave blocks Google's location service by default) → fall back automatically.
+    const w=el('span');w.append('The browser could not get a fix'+(lastErr&&lastErr.message?' ('+lastErr.message+')':'')+'. Brave users: enable “Use Google services for geolocation” in brave://settings/privacy, or turn on Wi-Fi/Location Services. Falling back to approximate location… ');
+    setGpsStatus([w],'warn');
+    return ipLocate(true);
+  }
+}
+async function ipLocate(auto=false){
+  if(S.busy&&!auto)return;
+  setBusy(true,'Looking up…');setLocChip('warn','LOCATING…');
+  try{
+    const j=await api('/api/location/ip',{},15000);
+    if(j.status!=='APPROXIMATE_IP_LOCATION')throw new Error('online IP lookup unavailable');
+    setBusy(false);
+    applyLocation({lat:j.lat,lon:j.lon,accuracy:j.accuracy_m,source:'ip',place:[j.city,j.region,j.country].filter(Boolean).join(', '),cc:j.country_code});
+  }catch(e){
+    setBusy(false);$('gpsLabel').textContent='Try again';setLocChip('warn','LOCATION UNAVAILABLE');
+    setGpsStatus('Could not determine your location automatically ('+e.message+'). Use “Pick on map” or type a place name / coordinates below — everything else works from there.','err');
+  }
+}
+let autoRegionBusy=false;
+async function maybeAutoInstallRegion(lat,lon){
+  if(autoRegionBusy||!navigator.onLine||store.get('synapse.autoRegion','1')!=='1')return;
+  // Browsers that expose a cellular connection are never allowed to start a large map download silently.
+  const connection=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  if(connection&&String(connection.type||'').toLowerCase()==='cellular'){
+    $('catalogStatus').textContent='Automatic map download paused on mobile data. Connect to Wi-Fi or install a region manually.';return;
+  }
+  autoRegionBusy=true;
+  try{
+    const installed=await api('/api/regions',{},15000);
+    const covered=(installed.regions||[]).some(r=>{const b=r.bbox;return Array.isArray(b)&&b.length===4&&lon>=b[0]&&lon<=b[2]&&lat>=b[1]&&lat<=b[3]});
+    if(covered){$('catalogStatus').textContent='Your current location is already covered by an installed regional map. It is ready for offline use.';return;}
+    if(!catalog.length){const c=await api('/api/catalog',{},60000);catalog=(c.regions||[]).filter(x=>x&&x.id&&x.name&&x.pbf&&Array.isArray(x.bbox)&&x.bbox.length===4);}
+    const parents=new Set(catalog.map(parentOf));
+    const matches=catalog.filter(x=>!parents.has(x.id)&&lon>=x.bbox[0]&&lon<=x.bbox[2]&&lat>=x.bbox[1]&&lat<=x.bbox[3])
+      .sort((a,b)=>bboxArea(a.bbox)-bboxArea(b.bbox));
+    if(!matches.length){$('catalogStatus').textContent='No downloadable regional extract covers this location yet. The world map remains available.';return;}
+    const it=matches[0];
+    const jobs=await api('/api/regions/jobs',{},10000);
+    if(jobs.running){$('catalogStatus').textContent='A regional map installation is already running. Your current map download was not duplicated.';return;}
+    $('catalogStatus').textContent='Automatically preparing '+it.name+' for offline use. Download and map processing may take several minutes; keep SYNAPSE EARTH running.';
+    const cc=ccOf(it)||'XX';
+    renderJob(await api('/api/regions/install-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_mb:500,skip_installed:true,items:[{pbf:it.pbf,name:it.name,region_id:it.id,country_code:cc,bbox:it.bbox}]})}));
+  }catch(e){$('catalogStatus').textContent='Automatic regional download could not start: '+e.message+'. You can retry while online from the regional map catalogue.';}
+  finally{autoRegionBusy=false;}
+}
+
+async function applyLocation({lat,lon,accuracy=0,source='gps',place='',cc=''}){
+  S.loc={lat,lon,accuracy,source};
+  const approx=source==='ip';
+  $('cLat').textContent=lat.toFixed(5);$('cLon').textContent=lon.toFixed(5);
+  $('cAcc').textContent=source==='map'||source==='manual'?'set by you':'±'+(accuracy>=1000?(accuracy/1000).toFixed(0)+' km':Math.round(accuracy)+' m');
+  setBusy(false);
+  setLocChip(approx?'warn':'ok',approx?'APPROXIMATE LOCATION':({gps:'GPS LOCKED',map:'LOCATION SET',manual:'LOCATION SET'}[source]||'LOCATION SET'));
+  // map marker + accuracy
+  meLayer.clearLayers();
+  L.marker([lat,lon],{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:1000,keyboard:false}).bindTooltip('You are here').addTo(meLayer);
+  if(accuracy>30)L.circle([lat,lon],{radius:Math.min(accuracy,60000),color:'#46ddc6',weight:1,fillColor:'#46ddc6',fillOpacity:.08,interactive:false}).addTo(meLayer);
+  map.flyTo([lat,lon],approx?9:accuracy>3000?11:accuracy>400?13:15,{duration:1});
+  $('infoEta').hidden=true;$('infoStepsBtn').hidden=true;$('infoSteps').hidden=true;
+  $('infoTitle').textContent='Your location';
+  $('infoSub').textContent=(approx?'Approximate (internet connection) · ':'')+lat.toFixed(5)+', '+lon.toFixed(5);
+  if(place)$('placeName').textContent='📍 '+place;
+  if(cc)setCountryCode(cc);
+  if(!approx)maybeAutoInstallRegion(lat,lon);
+  setGpsStatus(approx?'Approximate location only (city-level, may be tens of km off). Press “Detect my location” for GPS, or “Pick on map” to place yourself exactly, before relying on any route.':
+      'Location set'+(source==='gps'?' · accuracy ±'+Math.round(accuracy)+' m':'')+'. Looking up place name, nearby services and safer zones…',approx?'warn':'good');
+  // Non-blocking enrichment
+  reverseLookup(lat,lon,approx);
+  loadNearby(lat,lon).catch(()=>{});
+  if(!approx)findSafeZones(true).catch(reportError);
+  else $('routeStatus').textContent='Location is approximate. Refine it (GPS or “Pick on map”), then press “Find safer shelters & routes”.';
+}
+async function reverseLookup(lat,lon,approx){
+  try{
+    const j=await api('/api/location/reverse?lat='+lat+'&lon='+lon,{},15000);
+    if(j.status==='MATCHED_TO_INSTALLED_REGION'){
+      const opt=[...$('region').options].find(o=>o.value===j.region_id);
+      if(opt&&$('region').value!==j.region_id){$('region').value=j.region_id;await loadRegion()}
+      let cn=j.country_code;try{cn=new Intl.DisplayNames([navigator.language],{type:'region'}).of(j.country_code)||cn}catch(e){}
+      $('placeName').textContent='📍 '+[j.place,j.region,cn].filter(Boolean).join(', ')+' · nearest mapped settlement (offline)';
+      setCountryCode(j.country_code);
+    }else if(j.status==='ONLINE_REVERSE_GEOCODE'){
+      $('placeName').textContent='📍 '+([j.place,j.district,j.state,j.country].filter(Boolean).join(', ')||'Place name unavailable');
+      setCountryCode(j.country_code);
+    }else if(!approx){
+      const f=countryAt(lon,lat);if(f){$('placeName').textContent='📍 '+nm(f)+' (offline country boundary)';const iso=f.properties.ISO_A2;if(iso&&iso!=='-99')setCountryCode(iso)}
+    }
+  }catch(e){const f=countryAt(lon,lat);if(f)$('placeName').textContent='📍 '+nm(f)+' (offline country boundary)'}
+}
+bind('gpsDetect','click',detect);
+bind('ipLocate','click',()=>ipLocate());
+
+/* ---- manual place / coordinates ---- */
+function parseCoords(s){const m=s.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);if(!m)return null;const a=+m[1],b=+m[2];return Math.abs(a)<=90&&Math.abs(b)<=180?{lat:a,lon:b}:null}
+bind('manualForm','submit',async e=>{
+  e.preventDefault();const q=$('manualInput').value.trim(),box=$('manualResults');box.innerHTML='';if(!q)return;
+  const c=parseCoords(q);if(c)return applyLocation({...c,accuracy:0,source:'manual'});
+  const found=[];
+  try{const local=await api('/api/search/places?q='+encodeURIComponent(q),{},15000);(local.results||[]).slice(0,10).forEach(r=>found.push({name:r.name+' · '+(r.place_type||'settlement')+' · '+(r.region||'installed')+' (offline)',lat:r.lat,lon:r.lon,cc:r.country_code}))}catch(err){}
+  if(navigator.onLine){try{const j=await api('/api/geocode?q='+encodeURIComponent(q),{},12000);(j.results||[]).forEach(r=>found.push({name:r.name,lat:r.lat,lon:r.lon,cc:r.country_code}))}
+    catch(err){if(!found.length)box.append(el('div','empty','No offline match. Online place search is unavailable ('+err.message+'). Enter coordinates or pick on the map.'))}}
+  else if(!found.length)box.append(el('div','empty','No matching settlement found in your installed offline map packages. Install the region while online to search it offline.'));
+  found.forEach(r=>{const b=el('button','btn alt sm',r.name.length>70?r.name.slice(0,68)+'…':r.name);b.style.justifyContent='flex-start';b.style.whiteSpace='normal';b.style.textAlign='left';
+    b.onclick=()=>{box.innerHTML='';applyLocation({lat:r.lat,lon:r.lon,accuracy:0,source:'manual',place:r.name,cc:r.cc})};box.append(b)});
+  if(!found.length&&!box.children.length)box.append(el('div','empty','No match found.'));
+});
+
+/* ============================== NEARBY ============================== */
+async function loadNearby(lat,lon){
+  const j=await api('/api/location/nearby?lat='+lat+'&lon='+lon+'&radius_m=15000',{},20000);
+  const box=$('nearbyServices');box.innerHTML='';const f=j.facilities||[];
+  if(!f.length){box.append(el('div','empty',j.coverage==='FACILITY_DATA_AVAILABLE'?'No mapped facilities within this radius in installed data. That does not prove none exist.':'No installed regional package covers this position. Install one below to list hospitals and shelters offline. (“Safer zones” still searches online when connected.)'));return}
+  f.slice(0,10).forEach(x=>{
+    const k=/hospital|clinic|health/i.test(x.type)?'medical':/shelter|assembly|evacuation/i.test(x.type)?'shelter':/fire|police|ambulance|community|townhall/i.test(x.type)?'refuge':'other';
+    const r=el('button','zone t-'+k);
+    r.type='button';r.append(el('div','zbadge',{medical:'✚',shelter:'⌂',refuge:'⚑',other:'•'}[k]));
+    const i=el('div');i.append(el('div','zname',x.name||'Unnamed facility'),el('div','zmeta',x.type+' · mapped record'));
+    r.append(i,el('div','zdist',fmtDist(x.distance_m)));
+    r.onclick=()=>map.flyTo([x.lat,x.lon],16,{duration:.8});box.append(r)});
+}
+bind('nearbyRefresh','click',async()=>{if(!S.loc)return toast('Detect your location first.');await loadNearby(S.loc.lat,S.loc.lon)});
+
+/* ============================== SAFER ZONES ============================== */
+const TIER={shelter:'Shelter / assembly point',refuge:'Possible refuge building',medical:'Medical facility'};
+function setMode(m){S.mode=m;$('modeFoot').setAttribute('aria-pressed',m==='foot');$('modeCar').setAttribute('aria-pressed',m==='driving');if(S.loc&&S.zones.length)findSafeZones(true).catch(reportError)}
+bind('modeFoot','click',()=>setMode('foot'));bind('modeCar','click',()=>setMode('driving'));
+bind('kind','change',()=>{if(S.loc&&S.zones.length)findSafeZones(true).catch(reportError)});
+let zoneToken=0;
+async function findSafeZones(auto=false){
+  const out=$('routeStatus'),list=$('zoneList'),btn=$('autoEvacuate');
+  if(!S.loc){out.textContent='Detect or set your location first — no destination needs to be typed.';if(!auto)toast('Detect your location first.');return}
+  const tok=++zoneToken;btn.disabled=true;
+  out.textContent='Searching mapped shelters, assembly points and medical facilities, then ranking candidates by road distance where available…';
+  list.innerHTML='';for(let i=0;i<3;i++)list.append(el('div','skeleton'));
+  let j;
+  try{j=await api('/api/safezones?lat='+S.loc.lat+'&lon='+S.loc.lon+'&hazard='+encodeURIComponent($('kind').value)+'&mode='+S.mode+'&cc='+encodeURIComponent(S.cc),{},90000)}
+  catch(e){if(tok!==zoneToken)return;list.innerHTML='';out.textContent='Could not calculate safer zones: '+e.message;btn.disabled=false;return}
+  if(tok!==zoneToken)return;
+  btn.disabled=false;list.innerHTML='';
+  S.zones=(j.destinations||[]).filter(z=>!S.unavailable.has(z.id));S.emerg=j.emergency_number;
+  zoneLayer.clearLayers();S.sel=-1;
+  const src=[];if(j.sources&&j.sources.offline_data)src.push('installed offline map');if(j.sources&&j.sources.online_data)src.push('OpenStreetMap (online)');
+  if(!S.zones.length){
+    out.textContent='';const m=el('div','status warn',j.message||'No candidates found.');list.append(m);
+    (j.notes||[]).forEach(n=>list.append(el('div','status err','⚠ '+n)));
+    const rb=el('button','btn alt sm','Retry search');rb.type='button';rb.onclick=()=>findSafeZones(false);list.append(rb);
+    list.append(el('div','status','Emergency number: '+(j.emergency_number||'112')));return;
+  }
+  out.textContent='Showing '+S.zones.length+' available mapped candidates'+(src.length?' from '+src.join(' + '):'')+'. Ordered by road distance when available. Capacity and opening status are not verified.';
+  (j.notes||[]).forEach(n=>{const d=el('div','hint',n);d.style.marginTop='4px';out.append(d)});
+  drawZones();S.zones.forEach((z,i)=>list.append(zoneCard(z,i)));
+  selectZone(0,false);
+  const pts=[[S.loc.lat,S.loc.lon],...S.zones.slice(0,3).map(z=>[z.lat,z.lon])];
+  map.flyToBounds(L.latLngBounds(pts),{padding:[60,60],maxZoom:16,duration:.9});
+  setGpsStatus('Location set · '+S.zones.length+' mapped candidates. Nearest road-route options are listed first; verify availability on arrival.','good');
+}
+function zoneIcon(z,i,sel){return L.divIcon({className:'',html:'<div class="zm t-'+z.tier+(sel?' sel':'')+'"><span>'+(i+1)+'</span></div>',iconSize:sel?[36,36]:[30,30],iconAnchor:sel?[4,34]:[3,28]})}
+function midpoint(ll){let t=0,seg=[];for(let i=1;i<ll.length;i++){const d=map.distance(ll[i-1],ll[i]);seg.push(d);t+=d}let h=t/2;for(let i=0;i<seg.length;i++){if(h<=seg[i]){const f=seg[i]?h/seg[i]:0;return[ll[i][0]+(ll[i+1][0]-ll[i][0])*f,ll[i][1]+(ll[i+1][1]-ll[i][1])*f]}h-=seg[i]}return ll[0]}
+function drawZones(){
+  zoneLayer.clearLayers();
+  const ll=z=>z.route.coordinates.map(c=>[c[1],c[0]]);
+  // alternatives: grey, selected: Google-style blue with white casing and a time bubble
+  S.zones.forEach((z,i)=>{if(i===S.sel)return;const road=z.route.status==='CANDIDATE_ROUTE';
+    L.polyline(ll(z),{pane:'zones',color:'#ffffff',weight:7,opacity:.7,interactive:false}).addTo(zoneLayer);
+    L.polyline(ll(z),{pane:'zones',color:'#8a97a3',weight:4,opacity:.95,dashArray:road?null:'4 8',interactive:false}).addTo(zoneLayer)});
+  const s=S.zones[S.sel];
+  if(s){const pts=ll(s),road=s.route.status==='CANDIDATE_ROUTE';
+    L.polyline(pts,{pane:'zones',color:'#ffffff',weight:11,opacity:1,lineCap:'round',lineJoin:'round',interactive:false}).addTo(zoneLayer);
+    L.polyline(pts,{pane:'zones',color:road?'#1a73e8':'#e8710a',weight:6,opacity:1,lineCap:'round',lineJoin:'round',dashArray:road?null:'1 11',interactive:false}).addTo(zoneLayer);
+    if(pts.length>1)L.marker(midpoint(pts),{pane:'bubble',interactive:false,keyboard:false,icon:L.divIcon({className:'',html:'<div class="etabub">'+fmtDur(etaSeconds(s))+'</div>',iconSize:[0,0]})}).addTo(zoneLayer)}
+  S.zones.forEach((z,i)=>L.marker([z.lat,z.lon],{pane:'zones',icon:zoneIcon(z,i,i===S.sel),zIndexOffset:i===S.sel?500:0,keyboard:false}).on('click',()=>selectZone(i,true)).bindTooltip(z.name,{permanent:true,direction:'right',offset:[18,-16],className:'zlabel t-'+z.tier}).addTo(zoneLayer));
+}
+function etaSeconds(z){const r=z.route;return r.duration_s||(r.distance_m/(S.mode==='foot'?1.25:8.3))}
+function zoneCard(z,i){
+  const c=el('div','zone t-'+z.tier);c.setAttribute('role','option');c.tabIndex=0;c.dataset.i=i;
+  c.append(el('div','zbadge',String(i+1)));
+  const mid=el('div');mid.append(el('div','zname',z.name),el('span','ztype',z.tier_label));
+  const meta=el('div','zmeta');
+  const r=z.route,road=r.status==='CANDIDATE_ROUTE';
+  meta.append((road?'Road route':'Direct line')+' · '+fmtDur(etaSeconds(z))+(S.mode==='foot'?' walk':' drive')+(road?'':' (rough)'));
+  mid.append(meta);
+  const tags=el('div');
+  if(!road)tags.append(el('span','tag dash','No road route'));
+  (z.notes||[]).forEach(n=>tags.append(el('span','tag '+(/higher/.test(n)?'up':'down'),n)));
+  tags.append(el('span','tag',z.source));mid.append(tags);
+  c.append(mid);
+  const d=el('div','zdist',fmtDist(r.distance_m||z.straight_line_m));d.append(el('small',null,road?'by road':'straight'));c.append(d);
+  c.onclick=ev=>{if(ev.target.closest('.detail'))return;selectZone(i,true)};
+  c.onkeydown=ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();selectZone(i,true)}};
+  return c;
+}
+function selectZone(i,fly){
+  S.sel=i;const z=S.zones[i];if(!z)return;
+  document.querySelectorAll('#zoneList .zone').forEach(c=>{
+    const on=+c.dataset.i===i;c.setAttribute('aria-selected',on);
+    const old=c.querySelector('.detail');if(old)old.remove();
+    if(on)c.append(zoneDetail(z));
+  });
+  drawZones();
+  const sc=document.querySelector('#zoneList .zone[aria-selected=true]');if(sc&&fly)sc.scrollIntoView({block:'nearest',behavior:'smooth'});
+  if(fly){const ll=z.route.coordinates.map(c=>[c[1],c[0]]);try{map.flyToBounds(L.latLngBounds(ll),{padding:[70,70],maxZoom:17,duration:.7})}catch(e){}}
+  $('infoTitle').textContent=(i+1)+'. '+z.name;
+  const road=z.route.status==='CANDIDATE_ROUTE';
+  $('infoSub').textContent=z.tier_label+' · from your location';
+  const eta=$('infoEta');eta.hidden=false;eta.innerHTML='';eta.append(el('strong',null,fmtDur(etaSeconds(z))),el('span',null,'('+fmtDist(z.route.distance_m||z.straight_line_m)+(road?'':' straight-line')+') · '+(S.mode==='foot'?'🚶 walking':'🚗 driving')));
+  const steps=$('infoSteps'),sb=$('infoStepsBtn');steps.innerHTML='';steps.hidden=true;sb.textContent='Show directions';
+  const list=(z.route.steps||[]);
+  sb.hidden=false;
+  steps.append(...(list.length?list.slice(0,30).map(x=>el('li',null,x.text+(x.distance_m?' ('+fmtDist(x.distance_m)+')':''))):[el('li',null,road?'Follow '+((z.route.road_names||[]).slice(0,4).join(' → ')||'the highlighted road')+'.':'No road route: head '+(z.route.bearing||'toward the marker')+' (direct line).')]));
+}
+function zoneDetail(z){
+  const d=el('div','detail'),r=z.route;
+  d.append(el('div','hint','Route source: '+(r.source||'unknown')+(r.bearing?' · head '+r.bearing:'')));
+  if(r.road_names&&r.road_names.length)d.append(el('div','hint','Via '+r.road_names.slice(0,6).join(' → ')));
+  if(r.steps&&r.steps.length){const ol=el('ol');r.steps.slice(0,25).forEach(s=>ol.append(el('li',null,s.text+(s.distance_m?' ('+fmtDist(s.distance_m)+')':''))));d.append(ol)}
+  d.append(el('div','hint',z.verification));
+  if(r.warning)d.append(el('div','hint',r.warning));
+  if(z.phone)d.append(el('div','hint','Phone (from map data): '+z.phone));
+  const L1=el('div','links');
+  const a=(t,h)=>{const x=el('a',null,t);x.href=h;x.target='_blank';x.rel='noopener noreferrer';return x};
+  const o=S.loc;
+  L1.append(a('Open in OpenStreetMap','https://www.openstreetmap.org/directions?engine=fossgis_osrm_'+(S.mode==='foot'?'foot':'car')+'&route='+o.lat+'%2C'+o.lon+'%3B'+z.lat+'%2C'+z.lon),
+            a('Open in Google Maps','https://www.google.com/maps/dir/?api=1&travelmode='+(S.mode==='foot'?'walking':'driving')+'&origin='+o.lat+','+o.lon+'&destination='+z.lat+','+z.lon));
+  d.append(L1);
+  const unavailable=el('button','btn alt sm','Report full / closed / inaccessible');
+  unavailable.type='button';
+  unavailable.onclick=ev=>{ev.preventDefault();ev.stopPropagation();markZoneUnavailable(z.id)};
+  d.append(unavailable);
+  d.append(el('div','hint','If staff confirm this place cannot accept people, report it here. SYNAPSE will remove it from this search and select the next mapped candidate. This report is local to this session; it does not verify or publish live capacity.'));
+  return d;
+}
+function markZoneUnavailable(id){
+  const idx=S.zones.findIndex(z=>z.id===id);if(idx<0)return;
+  const removed=S.zones[idx];S.unavailable.add(id);
+  S.zones.splice(idx,1);S.sel=-1;zoneLayer.clearLayers();$('zoneList').innerHTML='';
+  if(!S.zones.length){$('routeStatus').textContent='All candidates in this search were reported full, closed or inaccessible. Search again for other mapped options or contact emergency services.';$('infoTitle').textContent='No remaining candidates';$('infoSub').textContent='All currently listed options were excluded in this session.';$('infoEta').hidden=true;$('infoSteps').hidden=true;toast('No remaining mapped alternatives.');return;}
+  $('routeStatus').textContent=removed.name+' was excluded from this session. Showing the next nearest mapped alternative; confirm its capacity with staff.';
+  S.zones.forEach((z,i)=>$('zoneList').append(zoneCard(z,i)));
+  drawZones();selectZone(0,true);setGpsStatus('Facility reported unavailable · selected the next mapped candidate.','warn');
+}
+
+bind('autoEvacuate','click',()=>findSafeZones(false));
+bind('infoStepsBtn','click',()=>{const o=$('infoSteps');o.hidden=!o.hidden;$('infoStepsBtn').textContent=o.hidden?'Show directions':'Hide directions'});
+
+/* ============================== REGIONS / CATALOGUE ============================== */
+async function refreshRegions(){
+  const j=await api('/api/regions');$('regions').textContent=j.regions.length;
+  const cur=$('region').value;$('region').innerHTML='<option value="">No regional package selected</option>';
+  j.regions.forEach(m=>{const o=el('option',null,m.name+' · '+m.country_code+' · '+m.road_segments+' roads');o.value=m.region_id;$('region').append(o)});
+  if(cur)$('region').value=cur;
+}
+async function loadRegion(){
+  const id=$('region').value;S.pkg=null;S.nodes=null;
+  if(id){
+    S.pkg=await api('/api/region/'+id,{},120000);S.nodes=Object.fromEntries(S.pkg.nodes.map(n=>[n.id,n]));
+    $('nodes').textContent=S.pkg.nodes.length;$('edges').textContent=S.pkg.edges.length;
+    $('coverage').textContent=S.pkg.manifest.road_nodes+' road nodes · '+S.pkg.places.length+' places · '+S.pkg.facilities.length+' facilities · built '+(S.pkg.manifest.generated_at||'').slice(0,10);
+    renderPlaces('');
+  }else{$('nodes').textContent='0';$('edges').textContent='0';$('coverage').textContent='No regional detail selected. The world map and online shelter search still work.';$('places').textContent=''}
+  drawRoads();
+}
+let placeSearchToken=0;
+async function renderPlaces(q){
+  const box=$('places'),token=++placeSearchToken;box.innerHTML='';q=(q||'').trim();
+  if(q.length<2){box.textContent='Type at least 2 characters to search all installed offline regions.';return}
+  box.textContent='Searching installed offline regions…';
+  try{
+    const j=await api('/api/search/places?q='+encodeURIComponent(q),{},20000);if(token!==placeSearchToken)return;
+    const a=j.results||[];box.innerHTML='';
+    a.forEach(p=>{const b=el('button','btn alt sm',p.name+' · '+(p.place_type||'settlement')+' · '+(p.region||'installed'));b.style.cssText='width:100%;justify-content:flex-start;margin-bottom:4px';b.onclick=()=>{map.flyTo([p.lat,p.lon],13,{duration:.8});applyLocation({lat:p.lat,lon:p.lon,accuracy:0,source:'manual',place:p.name,cc:p.country_code})};box.append(b)});
+    if(!a.length)box.textContent='No matching place in your installed offline map packages.';
+  }catch(e){if(token===placeSearchToken)box.textContent='Offline place search failed: '+e.message}
+}
+bind('refresh','click',async()=>{await refreshRegions();toast('Installed regions refreshed','ok',2500)});
+bind('region','change',async()=>{await loadRegion();if(S.pkg){const b=S.pkg.manifest.bbox;if(b)map.flyToBounds([[b[1],b[0]],[b[3],b[2]]],{duration:.9})}});
+bind('placeSearch','input',()=>renderPlaces($('placeSearch').value));
+$('autoRegion').checked=store.get('synapse.autoRegion','1')==='1';
+bind('autoRegion','change',()=>{store.set('synapse.autoRegion',$('autoRegion').checked?'1':'0');$('catalogStatus').textContent=$('autoRegion').checked?'Automatic regional downloads are enabled.':'Automatic regional downloads are paused; you can still install maps manually.'});
+let catalog=[];
+function renderCatalog(){
+  const sel=$('catalogRegion'),q=$('catalogSearch').value.trim().toLowerCase();
+  const f=catalog.filter(x=>(x.name+' '+(x.country||'')+' '+(x.parent||'')).toLowerCase().includes(q)).slice(0,1500);
+  sel.innerHTML='<option value="">Select a region ('+f.length+' of '+catalog.length+')</option>';const groups=new Map();
+  f.forEach(it=>{const g=it.country||'Other';if(!groups.has(g)){const og=document.createElement('optgroup');og.label=g;sel.append(og);groups.set(g,og)}const o=el('option',null,it.name+(it.parent?' · '+it.parent:''));o.value=it.id;groups.get(g).append(o)});
+}
+bind('catalogSearch','input',renderCatalog);
+bind('catalogLoad','click',async()=>{
+  const st=$('catalogStatus'),b=$('catalogLoad');st.textContent='Fetching worldwide regional map catalogue…';b.disabled=true;
+  try{const j=await api('/api/catalog',{},60000);catalog=(j.regions||[]).filter(x=>x&&x.id&&x.name&&x.pbf&&Array.isArray(x.bbox)&&x.bbox.length===4);renderCatalog();
+    st.textContent=catalog.length+' extracts available'+(j.cached?' (cached copy — connect to update)':'')+'. Pick one and press Install.'}
+  catch(e){st.textContent='Catalogue unavailable: '+e.message}finally{b.disabled=false}
+});
+bind('catalogInstall','click',async()=>{
+  const it=catalog.find(x=>x.id===$('catalogRegion').value),st=$('catalogStatus'),b=$('catalogInstall');
+  if(!it){st.textContent='Load the catalogue, then select a region first.';return}
+  b.disabled=true;st.textContent='Installing '+it.name+' — downloading OSM data and building the road graph. This can take several minutes; keep this window and the server running…';
+  try{await api('/api/regions/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pbf:it.pbf,name:it.name,region_id:it.id,country_code:ccOf(it)||'XX',bbox:it.bbox})},3600000);
+    await refreshRegions();$('region').value=it.id;await loadRegion();st.textContent='Installed '+it.name+'. Roads, places and facilities are now available offline.';toast('Installed '+it.name,'ok');
+    if(S.loc)findSafeZones(true).catch(reportError)}
+  catch(e){st.textContent='Install failed: '+e.message+'. Try a smaller subregion; the import needs the “osmium” Python package and free disk space.'}
+  finally{b.disabled=false}
+});
+
+/* ---- bulk install ---- */
+const pathOf=it=>it.pbf.replace(/^https:\/\/download\.geofabrik\.de\//,'').replace(/-latest\.osm\.pbf$/,'');
+const parentOf=it=>{const p=pathOf(it);return p.includes('/')?p.slice(0,p.lastIndexOf('/')).toLowerCase().replace(/[^a-z0-9_-]+/g,'-'):''};
+const ccOf=it=>((it.country||'').match(/[A-Za-z]{2}/)||[''])[0].toUpperCase();
+function bboxArea(b){return (b[2]-b[0])*(b[3]-b[1])}
+function bulkSelect(scope){
+  const parents=new Set(catalog.map(parentOf)),leaves=catalog.filter(x=>!parents.has(x.id));
+  if(scope==='world')return leaves;
+  if(scope==='country'){const cc=S.cc;return leaves.filter(x=>ccOf(x)===cc)}
+  if(!S.loc)return [];
+  const hit=leaves.filter(x=>S.loc.lon>=x.bbox[0]&&S.loc.lon<=x.bbox[2]&&S.loc.lat>=x.bbox[1]&&S.loc.lat<=x.bbox[3]).sort((a,b)=>bboxArea(a.bbox)-bboxArea(b.bbox));
+  return hit.slice(0,1);
+}
+let jobTimer=null;
+function renderJob(j){
+  const items=j.items||[],done=items.filter(i=>['installed','skipped','failed','cancelled'].includes(i.status)).length;
+  $('bulkBar').hidden=!items.length;$('bulkFill').style.width=(items.length?done/items.length*100:0)+'%';
+  $('bulkStart').disabled=j.running;$('bulkCancel').hidden=!j.running;
+  const n=s=>items.filter(i=>i.status===s).length;
+  $('bulkInfo').textContent=items.length?(j.running?'Installing… ':'Finished. ')+done+'/'+items.length+' processed · '+n('installed')+' installed · '+n('skipped')+' skipped · '+n('failed')+' failed':$('bulkInfo').textContent;
+  const box=$('bulkList');box.innerHTML='';
+  const show=items.filter(i=>i.status==='running').concat(items.filter(i=>['failed','installed'].includes(i.status)).slice(-6).reverse());
+  show.slice(0,8).forEach(i=>{const d=el('div','hint',({running:'⏳ ',installed:'✓ ',failed:'✗ '}[i.status]||'')+i.name+(i.status==='running'?' — '+(i.bytes?Math.round(i.bytes/1e6)+' MB'+(i.size?' / '+Math.round(i.size/1e6)+' MB':''):i.message):i.message?' — '+i.message:''));box.append(d)});
+  if(j.running){if(!jobTimer)jobTimer=setInterval(pollJob,2000)}else if(jobTimer){clearInterval(jobTimer);jobTimer=null;refreshRegions().catch(()=>{});if(items.some(i=>i.status==='installed')){$('catalogStatus').textContent='Regional map installed successfully. Its roads, places and mapped facilities are now stored locally for offline use.';if(S.loc)findSafeZones(true).catch(()=>{})}else if(items.some(i=>i.status==='failed')){$('catalogStatus').textContent='Regional map installation finished with an error. Check the installation details below and retry on a stable connection.'}}
+}
+async function pollJob(){try{renderJob(await api('/api/regions/jobs',{},10000))}catch(e){}}
+bind('bulkStart','click',async()=>{
+  const scope=$('bulkScope').value;
+  if(!catalog.length){$('bulkInfo').textContent='Loading the worldwide catalogue first…';$('catalogLoad').click();await new Promise(r=>{const t=setInterval(()=>{if(catalog.length||!$('catalogLoad').disabled){clearInterval(t);r()}},300)})}
+  if(!catalog.length){$('bulkInfo').textContent='Catalogue unavailable — connect to the internet and try again.';return}
+  if(scope==='me'&&!S.loc){$('bulkInfo').textContent='Detect or set your location first.';return}
+  if(scope==='country'&&!S.cc){$('bulkInfo').textContent='Country not known yet — detect your location first.';return}
+  const items=bulkSelect(scope);
+  if(!items.length){$('bulkInfo').textContent='No extracts found for that scope.';return}
+  const mb=+$('bulkMax').value||300;
+  const msg=scope==='world'?'Whole world: '+items.length+' extracts. Even with the '+mb+' MB cap this can mean tens of GB of downloads and disk space, plus hours of processing. Continue?':'Queue '+items.length+' extract'+(items.length>1?'s':'')+' (max '+mb+' MB each)?';
+  if(!confirm(msg))return;
+  try{renderJob(await api('/api/regions/install-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_mb:mb,skip_installed:true,items:items.map(it=>({pbf:it.pbf,name:it.name,region_id:it.id,country_code:ccOf(it)||'XX',bbox:it.bbox}))})}))}
+  catch(e){$('bulkInfo').textContent='Could not start: '+e.message}
+});
+bind('bulkCancel','click',async()=>{renderJob(await api('/api/regions/install-cancel',{method:'POST'}))});
+pollJob();
+
+/* ============================== AI AGENTS ============================== */
+function agentCard(a){
+  const c=el('div','agent'),h=el('h4');h.append(el('i'),document.createTextNode(a.agent));
+  if(a.status)h.append(el('em',null,a.status.replace('_',' ')));c.append(h);
+  const dl=el('dl');
+  Object.entries(a).forEach(([k,v])=>{
+    if(k==='agent'||k==='status')return;
+    if(k==='actions'||k==='assumptions'||k==='limitations'){const ul=el('ul');v.forEach(x=>ul.append(el('li',null,x)));c.append(el('p',null,k.charAt(0).toUpperCase()+k.slice(1)+':'),ul);return}
+    const dt=el('dt',null,k.replace(/_/g,' ')),dd=el('dd',null,typeof v==='object'?JSON.stringify(v):String(v));dl.append(dt,dd);
+  });
+  if(dl.children.length)c.append(dl);return c;
+}
+bind('analyze','click',async()=>{
+  const btn=$('analyze');btn.disabled=true;$('summary').className='status';$('summary').textContent='Running agents…';
+  try{
+    const ctx={safe_zones:S.zones.slice(0,5).map(z=>({name:z.name,tier_label:z.tier_label,distance_m:z.route.distance_m,route_source:z.route.source}))};
+    const r=await api('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({region_id:S.pkg?S.pkg.manifest.region_id:'',location:$('placeName').textContent.replace('📍 ',''),incident:{type:$('kind').value,severity:$('severity').value},context:ctx})});
+    $('agents').innerHTML='';r.agents.forEach(a=>$('agents').append(agentCard(a)));
+    const co=r.agents.find(a=>a.agent==='Response Coordinator');
+    const s=$('summary');s.className='status good';s.innerHTML='';
+    s.append(el('div',null,$('kind').value+' · severity '+$('severity').value+' · '+(S.zones.length?S.zones.length+' safer-zone candidates':'no routes yet')));
+    const ul=el('ul');ul.style.cssText='margin:7px 0 0;padding-left:17px';(co?co.actions:[]).forEach(x=>ul.append(el('li',null,x)));s.append(ul);
+    s.append(el('div','hint','Decision support only · human approval required · route safety not certified.'));
+    if(S.emerg)s.append(el('div','hint','Emergency number: '+S.emerg));
+  }catch(e){$('summary').className='status err';$('summary').textContent='Assessment failed: '+e.message}
+  finally{btn.disabled=false}
+});
+
+/* ============================== ACCOUNT ============================== */
+let csrf=null,authMode='login';
+const authPanel=$('authPanel'),closeAuth=()=>authPanel.classList.remove('open');
+bind('authOpen','click',async()=>{
+  if(csrf){try{await api('/api/auth/logout',{method:'POST',headers:{'X-CSRF-Token':csrf}});csrf=null;$('authOpen').textContent='Sign in';toast('Signed out. Guest access remains available.','ok',3000)}catch(e){toast('Could not sign out: '+e.message,'err')}}
+  else{authPanel.classList.add('open');setTimeout(()=>$('authEmail').focus(),30)}
+});
+bind('authClose','click',closeAuth);
+authPanel.addEventListener('mousedown',e=>{if(e.target===authPanel)closeAuth()});
+bind('authToggle','click',()=>{
+  authMode=authMode==='login'?'signup':'login';const su=authMode==='signup';
+  $('authTitle').textContent=su?'Create your account':'Sign in to SYNAPSE EARTH';$('authSubmit').textContent=su?'Create account':'Sign in';$('authToggle').textContent=su?'I have an account':'Create account';
+  $('nameWrap').style.display=su?'block':'none';$('authMessage').textContent='';
+});
+bind('authSubmit','click',async()=>{
+  const body={email:$('authEmail').value,password:$('authPassword').value,display_name:$('authName').value};
+  if(authMode==='signup'&&!body.display_name.trim()){$('authMessage').textContent='Enter your name.';return}
+  try{const j=await api('/api/auth/'+authMode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    csrf=j.csrf;closeAuth();$('authPassword').value='';$('authOpen').textContent=j.user.display_name;toast('Signed in as '+j.user.email,'ok',3500)}
+  catch(e){$('authMessage').textContent=e.message}
+});
+['authEmail','authPassword','authName'].forEach(id=>bind(id,'keydown',e=>{if(e.key==='Enter')$('authSubmit').click()}));
+api('/api/auth/me',{},8000).then(j=>{if(j.authenticated){csrf=j.csrf;$('authOpen').textContent=j.user.display_name}}).catch(()=>{});
+
+/* ============================== NETWORK / RIGHT PANEL ============================== */
+function netState(){const on=navigator.onLine;$('netChip').className='chip '+(on?'ok':'warn');$('netLabel').textContent=on?'ONLINE':'OFFLINE · LOCAL DATA ONLY'}
+window.addEventListener('online',()=>{netState();if(!activeBase)setBase('Streets');toast('Back online · loading street map tiles','ok',2500)});
+window.addEventListener('offline',()=>{netState();toast('You are offline. Installed regional data and the offline world map keep working.','',6000)});
+netState();
+function rightToggle(){const small=matchMedia('(max-width:1240px) and (min-width:901px)').matches;$('toggleRight').style.display=small?'':'none'}
+bind('toggleRight','click',()=>$('shell').classList.toggle('show-right'));
+matchMedia('(max-width:1240px)').addEventListener('change',rightToggle);rightToggle();
+window.addEventListener('resize',()=>map.invalidateSize());
+
+/* ============================== BOOT ============================== */
+(async()=>{
+  await loadWorld();
+  try{await refreshRegions()}catch(e){toast('Could not list installed regions: '+e.message,'err')}
+  updateTileChip();
+})();
+</script>
+</body>
+</html>

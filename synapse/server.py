@@ -1,0 +1,359 @@
+import argparse,json,hashlib,hmac,urllib.request,urllib.parse,subprocess,sys,tempfile,os,re
+from pathlib import Path
+from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
+from urllib.parse import urlparse,unquote
+from .engine import load_regions,get_region,activate_package,run_agents,shortest_path,save_package,haversine
+from .auth import AuthStore,AuthError
+from . import online
+from .installer import BatchInstaller,install_one,validate_item
+import mimetypes
+UI_DIR=Path(__file__).resolve().parent.parent/"ui"
+class App(BaseHTTPRequestHandler):
+    data="data"
+    def log_message(self,*a): pass
+    def sendj(self,code,obj):
+        b=json.dumps(obj,ensure_ascii=False).encode();self.send_response(code);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Content-Length",str(len(b)));self.send_header("Cache-Control","no-store");self.end_headers();self.wfile.write(b)
+    def cookies(self):
+        from http.cookies import SimpleCookie
+        c=SimpleCookie()
+        try:c.load(self.headers.get("Cookie",""))
+        except Exception:pass
+        return {k:v.value for k,v in c.items()}
+    def set_session_cookie(self,token):
+        secure="; Secure" if self.headers.get("X-Forwarded-Proto","").lower()=="https" else ""
+        self.send_header("Set-Cookie",f"synapse_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}")
+    def send_auth(self, result, status=200):
+        b=json.dumps({k:v for k,v in result.items() if k!="token"}).encode()
+        self.send_response(status);self.send_header("Content-Type","application/json; charset=utf-8")
+        self.send_header("Content-Length",str(len(b)));self.send_header("Cache-Control","no-store")
+        self.set_session_cookie(result["token"]);self.end_headers();self.wfile.write(b)
+    def qs(self):
+        from urllib.parse import parse_qs
+        return parse_qs(urlparse(self.path).query)
+    def latlon(self,q,a="lat",b="lon"):
+        lat=float(q[a][0]);lon=float(q[b][0])
+        if not (-90<=lat<=90 and -180<=lon<=180):raise ValueError("out of range")
+        return lat,lon
+    def installed_regions(self,lat=None,lon=None):
+        out=[]
+        for meta in load_regions(self.data):
+            bb=meta.get("bbox")
+            if lat is not None and not (bb and bb[0]<=lon<=bb[2] and bb[1]<=lat<=bb[3]):continue
+            try:out.append((get_region(self.data,meta["region_id"]),meta))
+            except Exception:continue
+        return out
+    def send_static(self,rel):
+        f=(UI_DIR/rel).resolve()
+        if UI_DIR.resolve() not in f.parents or not f.is_file():return self.sendj(404,{"error":"not found"})
+        b=f.read_bytes();ct=mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+        if ct.startswith("text/") or ct in("application/javascript",):ct+="; charset=utf-8"
+        self.send_response(200);self.send_header("Content-Type",ct);self.send_header("Content-Length",str(len(b)));self.send_header("Cache-Control","public, max-age=86400");self.end_headers();self.wfile.write(b)
+    def do_GET(self):
+        path=unquote(urlparse(self.path).path)
+        if path.startswith("/vendor/"):return self.send_static(path[1:])
+        if path=="/api/location/ip":return self.sendj(200,online.ip_location())
+        if path=="/api/geocode":
+            try:return self.sendj(200,online.geocode(self.qs().get("q",[""])[0]))
+            except Exception as e:return self.sendj(503,{"error":"Online place search unavailable: "+str(e)[:150],"results":[]})
+        if path=="/api/search/places":
+            # Search only locally installed regional packages; this endpoint never uses the network.
+            q=self.qs().get("q",[""])[0].strip().casefold()
+            if len(q)<2:return self.sendj(200,{"source":"installed_offline_data","results":[]})
+            matches=[];seen=set()
+            for meta in load_regions(self.data):
+                try:
+                    rp=get_region(self.data,meta["region_id"])
+                    for place in rp.get("places",[]):
+                        name=str(place.get("name") or "").strip()
+                        if q not in name.casefold():continue
+                        key=(name.casefold(),round(float(place["lat"]),5),round(float(place["lon"]),5))
+                        if key in seen:continue
+                        seen.add(key)
+                        matches.append({"name":name,"place_type":place.get("place_type","settlement"),
+                            "lat":float(place["lat"]),"lon":float(place["lon"]),
+                            "region":rp.get("manifest",{}).get("name",meta.get("name","Installed region")),
+                            "country_code":rp.get("manifest",{}).get("country_code")})
+                except Exception:continue
+            matches.sort(key=lambda x:(not x["name"].casefold().startswith(q),x["name"].casefold()))
+            return self.sendj(200,{"source":"installed_offline_data","count":len(matches),"results":matches[:50]})
+        if path=="/api/safezones":
+            try:
+                q=self.qs();lat,lon=self.latlon(q)
+            except Exception:return self.sendj(400,{"error":"Valid lat and lon query parameters are required."})
+            res=online.safe_zones(self.installed_regions(lat,lon),lat,lon,q.get("hazard",["Flood"])[0],q.get("mode",["foot"])[0],use_online=q.get("online",["1"])[0]!="0")
+            cc=q.get("cc",[""])[0];res["emergency_number"]=online.emergency_number(cc)
+            return self.sendj(200,res)
+        if path=="/api/emergency-number":return self.sendj(200,{"number":online.emergency_number(self.qs().get("cc",[""])[0])})
+        if path=="/api/health":return self.sendj(200,{"status":"local","offline_capable":True,"authentication":"enabled","guest_mode":True})
+        if path=="/api/auth/me":
+            s=self.auth.current(self.cookies().get("synapse_session"))
+            return self.sendj(200,{"authenticated":bool(s),"user":s["user"] if s else None,"csrf":s["csrf"] if s else None})
+        if path=="/api/catalog":
+            # Global Geofabrik extract catalogue. Cache after a successful online fetch.
+            cache_path=Path(self.data)/"global_region_catalog.json"
+            try:
+                req=urllib.request.Request("https://download.geofabrik.de/index-v1.json",
+                    headers={"User-Agent":"SYNAPSE-EARTH/1.0 (global regional map catalogue)"})
+                with urllib.request.urlopen(req,timeout=25) as r:
+                    index=json.loads(r.read(30_000_000))
+                items=[]
+                for f in index.get("features",[]):
+                    prop=f.get("properties") or {}; urls=prop.get("urls") or {}
+                    pbf=urls.get("pbf")
+                    if not pbf: continue
+                    if pbf.startswith("/"): pbf="https://download.geofabrik.de"+pbf
+                    if not pbf.startswith("https://download.geofabrik.de/"): continue
+                    geom=f.get("geometry") or {}; coords=[]
+                    def walk(v):
+                        if isinstance(v,(list,tuple)):
+                            if len(v)>=2 and isinstance(v[0],(int,float)) and isinstance(v[1],(int,float)):
+                                coords.append((float(v[0]),float(v[1])))
+                            else:
+                                for x in v: walk(x)
+                    walk(geom.get("coordinates",[]))
+                    if not coords: continue
+                    bbox=[min(x for x,y in coords),min(y for x,y in coords),
+                          max(x for x,y in coords),max(y for x,y in coords)]
+                    path_=re.sub(r"^https://download\.geofabrik\.de/|-latest\.osm\.pbf$","",pbf)
+                    rid=re.sub(r"[^a-z0-9_-]+","-",path_.lower()).strip("-")[:110]
+                    if not rid: continue
+                    parent_id=re.sub(r"[^a-z0-9_-]+","-",path_.rsplit("/",1)[0].lower()).strip("-") if "/" in path_ else ""
+                    parent=prop.get("parent")
+                    if isinstance(parent,dict): parent=parent.get("name") or parent.get("id")
+                    raw=prop.get("iso3166-1:alpha2") or prop.get("country") or ""
+                    if isinstance(raw,(list,tuple)): raw=raw[0] if raw else ""
+                    cc=re.sub(r"[^A-Za-z]","",str(raw)).upper()[:2]
+                    items.append({"id":rid,"name":str(prop.get("name") or "Unnamed region"),
+                        "pbf":pbf,"bbox":bbox,"parent":parent,"parent_id":parent_id,"country":cc,
+                        "level":"subregion" if parent else "country_or_region"})
+                byid={x["id"]:x for x in items}
+                for x in items:                      # inherit the country code from the nearest ancestor that has one
+                    cur=x;hops=0
+                    while not x["country"] and cur.get("parent_id") in byid and hops<6:
+                        cur=byid[cur["parent_id"]];x["country"]=cur["country"];hops+=1
+                parents={x["parent_id"] for x in items}
+                for x in items: x["leaf"]=x["id"] not in parents
+                unique={x["id"]:x for x in items}
+                items=sorted(unique.values(),key=lambda x:(x["country"],str(x.get("parent") or ""),x["name"].lower()))
+                payload={"source":"Geofabrik global OpenStreetMap extracts","regions":items,
+                    "count":len(items),"license":"OpenStreetMap ODbL",
+                    "scope_note":"Worldwide catalogue of extracts published by Geofabrik; availability and subdivision depth vary by country."}
+                cache_path.parent.mkdir(parents=True,exist_ok=True)
+                tmp=cache_path.with_suffix(".tmp");tmp.write_text(json.dumps(payload,ensure_ascii=False));tmp.replace(cache_path)
+                return self.sendj(200,payload)
+            except Exception as e:
+                try:
+                    cached=json.loads(cache_path.read_text());cached["cached"]=True
+                    cached["scope_note"]="Showing the last successfully downloaded Geofabrik catalogue. New regions require an internet connection."
+                    return self.sendj(200,cached)
+                except Exception:
+                    return self.sendj(503,{"error":"Global regional map catalogue unavailable: "+str(e),
+                        "hint":"Connect to the internet once to download and cache the worldwide extract catalogue. Installed packages continue working offline."})
+        if path=="/api/location/reverse":
+            try:
+                from urllib.parse import parse_qs
+                q=parse_qs(urlparse(self.path).query);lat=float(q["lat"][0]);lon=float(q["lon"][0])
+                if not (-90<=lat<=90 and -180<=lon<=180):raise ValueError()
+            except Exception:return self.sendj(400,{"error":"Valid lat and lon query parameters are required."})
+            candidates=[]
+            for meta in load_regions(self.data):
+                try:
+                    bb=meta.get("bbox")
+                    if not bb or not (bb[0]<=lon<=bb[2] and bb[1]<=lat<=bb[3]):continue
+                    rp=get_region(self.data,meta["region_id"])
+                    candidates.append((rp,meta))
+                except Exception:continue
+            best=None
+            for rp,meta in candidates:
+                for p in rp.get("places",[]):
+                    d=haversine({"lat":lat,"lon":lon},p)
+                    if best is None or d<best[0]:best=(d,p,rp,meta)
+            if best:
+                d,p,rp,meta=best
+                return self.sendj(200,{"status":"MATCHED_TO_INSTALLED_REGION","latitude":lat,"longitude":lon,
+                  "country_code":rp["manifest"].get("country_code"),"region":rp["manifest"].get("name"),"region_id":rp["manifest"].get("region_id"),
+                  "place":p["name"],"place_type":p.get("place_type"),"distance_to_place_m":round(d),
+                  "note":"Nearest settlement in installed OpenStreetMap package; not an authoritative address."})
+            # Online fallback is explicitly labelled and only attempted when local packages have no match.
+            try:
+                query=urllib.parse.urlencode({"format":"jsonv2","lat":lat,"lon":lon,"zoom":10,"addressdetails":1})
+                req=urllib.request.Request("https://nominatim.openstreetmap.org/reverse?"+query,headers={"User-Agent":"SYNAPSE-EARTH/1.0 (disaster-response prototype)"})
+                with urllib.request.urlopen(req,timeout=7) as r: geo=json.loads(r.read())
+                addr=geo.get("address",{})
+                place=addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality") or addr.get("suburb") or addr.get("county")
+                return self.sendj(200,{"status":"ONLINE_REVERSE_GEOCODE","latitude":lat,"longitude":lon,
+                  "place":place,"district":addr.get("county"),"state":addr.get("state"),"country":addr.get("country"),
+                  "country_code":(addr.get("country_code") or "").upper(),"display_name":geo.get("display_name"),
+                  "note":"City/administrative name resolved using online OpenStreetMap Nominatim. This result is not stored for offline use."})
+            except Exception:
+                return self.sendj(200,{"status":"GPS_ONLY_NO_LOCAL_GEOCODER","latitude":lat,"longitude":lon,
+                  "country_code":None,"place":None,"note":"GPS coordinates captured. No installed offline settlement match and online reverse geocoding was unavailable."})
+        if path=="/api/location/nearby":
+            try:
+                from urllib.parse import parse_qs
+                q=parse_qs(urlparse(self.path).query)
+                lat=float(q["lat"][0]);lon=float(q["lon"][0]);radius=max(100,min(100000,float(q.get("radius_m",["10000"])[0])))
+                if not (-90<=lat<=90 and -180<=lon<=180):raise ValueError()
+            except Exception:return self.sendj(400,{"error":"Valid lat/lon and optional radius_m are required."})
+            matching=[];covered=False
+            for meta in load_regions(self.data):
+                try:
+                    bb=meta.get("bbox")
+                    if not bb or not (bb[0]<=lon<=bb[2] and bb[1]<=lat<=bb[3]):continue
+                    rp=get_region(self.data,meta["region_id"])
+                    covered=True
+                    for f in rp.get("facilities",[]):
+                        d=haversine({"lat":lat,"lon":lon},f)
+                        if d<=radius:
+                            matching.append({**f,"distance_m":round(d),"region_id":meta["region_id"]})
+                except Exception:continue
+            matching.sort(key=lambda x:x["distance_m"])
+            return self.sendj(200,{"coverage":"FACILITY_DATA_AVAILABLE" if covered else "NO_INSTALLED_REGIONAL_COVERAGE",
+                "latitude":lat,"longitude":lon,"radius_m":radius,"facility_records":len(matching),
+                "facilities":matching[:100],
+                "facility_note":"Mapped OSM facilities only. This list is not exhaustive and does not confirm that a facility is open, staffed, reachable or safe."})
+        if path=="/api/evacuation":
+            try:
+                from urllib.parse import parse_qs
+                q=parse_qs(urlparse(self.path).query)
+                lat=float(q["lat"][0]);lon=float(q["lon"][0])
+                radius=max(500,min(50000,float(q.get("radius_m",["15000"])[0])))
+                if not (-90<=lat<=90 and -180<=lon<=180):raise ValueError()
+            except Exception:return self.sendj(400,{"error":"Valid GPS latitude and longitude are required."})
+            candidates=[]
+            for meta in load_regions(self.data):
+                try:
+                    bb=meta.get("bbox")
+                    if not bb or not (bb[0]<=lon<=bb[2] and bb[1]<=lat<=bb[3]):continue
+                    rp=get_region(self.data,meta["region_id"])
+                    for f in rp.get("facilities",[]):
+                        typ=str(f.get("type","")).lower()
+                        emergency=str(f.get("emergency","")).lower()
+                        shelter=str(f.get("shelter","")).lower()
+                        amenity=str(f.get("amenity","")).lower()
+                        # Only explicitly tagged shelter/assembly-point records qualify as shelter candidates.
+                        is_shelter=(typ in ("shelter","emergency_shelter") or
+                            emergency in ("shelter","assembly_point","emergency_shelter") or
+                            shelter not in ("","no","false","0") or
+                            amenity in ("shelter","evacuation_centre","evacuation_center"))
+                        if not is_shelter:continue
+                        d=haversine({"lat":lat,"lon":lon},f)
+                        if d<=radius:candidates.append((d,f,rp,meta))
+                except Exception:continue
+            if not candidates:
+                return self.sendj(200,{"status":"NO_MAPPED_SHELTER_CANDIDATES","latitude":lat,"longitude":lon,
+                    "radius_m":radius,"destinations":[],"message":"No explicitly mapped shelter or emergency assembly-point records were found inside installed regional coverage. Nearby hospitals/clinics are not automatically treated as safe shelters. Install the correct local extract or verify a shelter with emergency authorities."})
+            candidates.sort(key=lambda x:x[0])
+            results=[];route_errors=[]
+            for d,f,rp,meta in candidates[:8]:
+                route=shortest_path(rp,lat,lon,float(f["lat"]),float(f["lon"]))
+                if route.get("status")=="CANDIDATE_ROUTE":
+                    results.append({"name":f.get("name") or "Unnamed mapped shelter","type":f.get("type"),
+                        "emergency":f.get("emergency"),"latitude":f["lat"],"longitude":f["lon"],
+                        "straight_line_m":round(d),"region_id":meta["region_id"],"route":route,
+                        "verification":"OSM-tagged shelter candidate; operating status, hazard exposure and safety are unverified."})
+                else:route_errors.append({"name":f.get("name"),"status":route.get("status"),"message":route.get("message")})
+            return self.sendj(200,{"status":"ROUTES_FOUND" if results else "SHELTERS_FOUND_NO_ROAD_ROUTE",
+                "latitude":lat,"longitude":lon,"radius_m":radius,"destinations":results,
+                "route_errors":route_errors,"message":"Choose a candidate only after confirming it is open, reachable and safe with local emergency authorities." if results else "Mapped shelter records exist, but no connected road route could be calculated in the installed graph."})
+        if path=="/api/regions/jobs":return self.sendj(200,App.batch.status())
+        if path=="/api/regions":return self.sendj(200,{"regions":load_regions(self.data)})
+        if path=="/api/world":
+            p=Path(self.data)/"world_countries.geojson"
+            # First launch: install the small Natural Earth country overview automatically
+            # when online. Once saved, the map is served locally and works offline.
+            try:
+                valid=False
+                if p.exists():
+                    try:
+                        existing=json.loads(p.read_text())
+                        valid=existing.get("type")=="FeatureCollection" and len(existing.get("features",[]))>=100
+                    except Exception:
+                        valid=False
+                if not valid:
+                    url="https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"
+                    req=urllib.request.Request(url,headers={"User-Agent":"SYNAPSE-EARTH/1.0 (world overview installer)"})
+                    with urllib.request.urlopen(req,timeout=45) as response:
+                        raw=response.read(25_000_000)
+                    geo=json.loads(raw)
+                    if geo.get("type")!="FeatureCollection" or len(geo.get("features",[]))<100:
+                        raise ValueError("Downloaded country boundary file failed validation")
+                    p.parent.mkdir(parents=True,exist_ok=True)
+                    tmp=p.with_suffix(".geojson.tmp");tmp.write_bytes(raw);tmp.replace(p)
+                b=p.read_bytes()
+                self.send_response(200);self.send_header("Content-Type","application/geo+json");self.send_header("Content-Length",str(len(b)));self.end_headers();self.wfile.write(b);return
+            except Exception as e:
+                return self.sendj(503,{"error":"World overview unavailable: "+str(e),"hint":"Run python3 scripts/download_world_map.py from the project root while online. The downloader now validates and atomically installs the file."})
+        if path.startswith("/api/region/"):
+            try:return self.sendj(200,get_region(self.data,path.rsplit("/",1)[1]))
+            except Exception as e:return self.sendj(404,{"error":str(e)})
+        if path.startswith("/sync/"):
+            rid=path.rsplit("/",1)[1]
+            try:
+                pkg=get_region(self.data,rid);tmp=Path(self.data)/(rid+".synapsepack");save_package(pkg,tmp);b=tmp.read_bytes();tmp.unlink(missing_ok=True)
+                self.send_response(200);self.send_header("Content-Type","application/zip");self.send_header("Content-Length",str(len(b)));self.send_header("X-SHA256",hashlib.sha256(b).hexdigest());self.end_headers();self.wfile.write(b);return
+            except Exception as e:return self.sendj(404,{"error":str(e)})
+        if path=="/" or path=="/index.html":
+            b=(Path(__file__).parent.parent/"ui"/"index.html").read_bytes();self.send_response(200);self.send_header("Content-Type","text/html; charset=utf-8");self.send_header("Content-Length",str(len(b)));self.send_header("Cache-Control","no-store");self.end_headers();self.wfile.write(b);return
+        return self.sendj(404,{"error":"not found"})
+    def do_POST(self):
+        path=unquote(urlparse(self.path).path)
+        try:
+            n=int(self.headers.get("Content-Length","0"))
+            if n>250_000_000:return self.sendj(413,{"error":"payload too large"})
+            raw=self.rfile.read(n)
+            if path=="/api/auth/signup":
+                body=json.loads(raw);res=self.auth.signup(body.get("email"),body.get("password"),body.get("display_name"))
+                return self.send_auth(res,201)
+            if path=="/api/auth/login":
+                body=json.loads(raw);res=self.auth.login(body.get("email"),body.get("password"),self.client_address[0])
+                return self.send_auth(res)
+            if path=="/api/auth/logout":
+                s=self.auth.current(self.cookies().get("synapse_session"))
+                if s and not hmac.compare_digest(self.headers.get("X-CSRF-Token",""),s["csrf"]):
+                    return self.sendj(403,{"error":"CSRF validation failed."})
+                self.auth.logout(self.cookies().get("synapse_session"))
+                self.send_response(200);self.send_header("Set-Cookie","synapse_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+                self.send_header("Content-Type","application/json");self.end_headers();self.wfile.write(b'{"status":"logged_out"}');return
+            if path=="/api/agents":
+                body=json.loads(raw)
+                if body.get("region_id"):pkg=get_region(self.data,body["region_id"])
+                else:pkg={"manifest":{"name":str(body.get("location") or "No regional package installed")[:120],"source":"none"},"nodes":[],"edges":[],"places":[],"facilities":[]}
+                return self.sendj(200,run_agents(pkg,body.get("incident",{}),body.get("context")))
+            if path=="/api/route":
+                body=json.loads(raw);pkg=get_region(self.data,body["region_id"])
+                return self.sendj(200,shortest_path(pkg,float(body["start_lat"]),float(body["start_lon"]),float(body["end_lat"]),float(body["end_lon"]),body.get("closed_way_ids",[])))
+            if path=="/api/regions/install":
+                r=install_one(json.loads(raw),self.data)
+                return self.sendj(200,{"status":"installed","region_id":json.loads(raw).get("region_id"),"file":r.get("file"),"downloaded_bytes":r.get("downloaded_bytes"),"import_log":r.get("import_log")})
+            if path=="/api/regions/install-batch":
+                body=json.loads(raw)
+                App.batch.start(body.get("items") or [],body.get("max_mb",300),bool(body.get("skip_installed",True)))
+                return self.sendj(200,App.batch.status())
+            if path=="/api/regions/install-cancel":
+                App.batch.cancel();return self.sendj(200,App.batch.status())
+            if path=="/api/activate":
+                tmp=Path(self.data)/"incoming.synapsepack";tmp.write_bytes(raw)
+                try:dest=activate_package(tmp,self.data)
+                finally:tmp.unlink(missing_ok=True)
+                return self.sendj(200,{"status":"activated","file":dest.name})
+            return self.sendj(404,{"error":"not found"})
+        except AuthError as e:return self.sendj(e.status,{"error":str(e)})
+        except Exception as e:return self.sendj(400,{"error":str(e)})
+def main():
+    p=argparse.ArgumentParser();p.add_argument("--data",default="./data");p.add_argument("--host",default="127.0.0.1");p.add_argument("--port",type=int,default=8080);a=p.parse_args()
+    Path(a.data).mkdir(parents=True,exist_ok=True);App.data=a.data
+    # Auto-activate checksum-validated packages generated into ./regions.
+    package_dir=Path("./regions")
+    if package_dir.is_dir():
+        for package_file in sorted(package_dir.glob("*.synapsepack")):
+            try:
+                activated=activate_package(package_file,a.data)
+                print(f"Activated existing regional package: {activated.name}")
+            except Exception as exc:
+                print(f"Skipped invalid regional package {package_file.name}: {exc}")
+    App.batch=BatchInstaller(a.data)
+    App.auth=AuthStore(Path(a.data)/"accounts.sqlite3")
+    print(f"SYNAPSE EARTH local server: http://{a.host}:{a.port}")
+    ThreadingHTTPServer((a.host,a.port),App).serve_forever()
+if __name__=="__main__":main()

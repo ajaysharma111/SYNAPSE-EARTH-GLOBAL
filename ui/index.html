@@ -352,7 +352,7 @@ async function api(url,opts={},timeout=30000){
 }
 const fmtDist=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+' km':Math.round(m)+' m';
 const fmtDur=s=>{const m=Math.max(1,Math.round(s/60));return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min'};
-const S={loc:null,pkg:null,nodes:null,zones:[],sel:-1,mode:'foot',countries:[],cc:'',pick:false,detectId:0,busy:false};
+const S={loc:null,pkg:null,nodes:null,zones:[],unavailable:new Set(),sel:-1,mode:'foot',countries:[],cc:'',pick:false,detectId:0,busy:false};
 
 /* ============================== MAP ============================== */
 const map=L.map('map',{worldCopyJump:true,minZoom:2,maxZoom:19,zoomControl:false,zoomSnap:.5,preferCanvas:true,attributionControl:true}).setView([20,10],2);
@@ -391,8 +391,11 @@ function updateTileChip(){
   if(tileBad>=4&&tileOK===0){c.className='chip glass warn';l.textContent='TILES UNREACHABLE · OFFLINE VECTOR MAP';if(!updateTileChip.warned){updateTileChip.warned=1;toast('Online map tiles are unreachable. Showing the offline country map; routing and shelters from installed data still work.','',7000)}return}
   c.className='chip glass ok';l.textContent='ONLINE TILES';
 }
-let savedBase=store.get('synapse.base2',null);if(savedBase&&!bases[savedBase])savedBase=null;
-setBase(navigator.onLine?(savedBase!==null?savedBase:'Streets'):'');
+// Restore a valid saved basemap. An empty saved value means the app was
+// previously offline; when online, prefer Streets instead of remaining blank.
+let savedBase=store.get('synapse.base2',null);
+if(typeof savedBase!=='string'||!savedBase.trim()||!bases[savedBase])savedBase=null;
+setBase(navigator.onLine?(savedBase||'Streets'):'');
 
 
 /* ---- world countries (offline GeoJSON) ---- */
@@ -642,14 +645,14 @@ async function findSafeZones(auto=false){
   const out=$('routeStatus'),list=$('zoneList'),btn=$('autoEvacuate');
   if(!S.loc){out.textContent='Detect or set your location first — no destination needs to be typed.';if(!auto)toast('Detect your location first.');return}
   const tok=++zoneToken;btn.disabled=true;
-  out.textContent='Searching installed map data and OpenStreetMap for shelters, assembly points and medical facilities, then calculating routes…';
+  out.textContent='Searching mapped shelters, assembly points and medical facilities, then ranking candidates by road distance where available…';
   list.innerHTML='';for(let i=0;i<3;i++)list.append(el('div','skeleton'));
   let j;
   try{j=await api('/api/safezones?lat='+S.loc.lat+'&lon='+S.loc.lon+'&hazard='+encodeURIComponent($('kind').value)+'&mode='+S.mode+'&cc='+encodeURIComponent(S.cc),{},90000)}
   catch(e){if(tok!==zoneToken)return;list.innerHTML='';out.textContent='Could not calculate safer zones: '+e.message;btn.disabled=false;return}
   if(tok!==zoneToken)return;
   btn.disabled=false;list.innerHTML='';
-  S.zones=j.destinations||[];S.emerg=j.emergency_number;
+  S.zones=(j.destinations||[]).filter(z=>!S.unavailable.has(z.id));S.emerg=j.emergency_number;
   zoneLayer.clearLayers();S.sel=-1;
   const src=[];if(j.sources&&j.sources.offline_data)src.push('installed offline map');if(j.sources&&j.sources.online_data)src.push('OpenStreetMap (online)');
   if(!S.zones.length){
@@ -658,13 +661,13 @@ async function findSafeZones(auto=false){
     const rb=el('button','btn alt sm','Retry search');rb.type='button';rb.onclick=()=>findSafeZones(false);list.append(rb);
     list.append(el('div','status','Emergency number: '+(j.emergency_number||'112')));return;
   }
-  out.textContent='Found '+S.zones.length+' candidate'+(S.zones.length>1?'s':'')+(src.length?' from '+src.join(' + '):'')+(j.user_elevation_m!=null?' · your elevation ≈ '+Math.round(j.user_elevation_m)+' m':'')+'. Tap one to show its route.';
+  out.textContent='Showing '+S.zones.length+' available mapped candidates'+(src.length?' from '+src.join(' + '):'')+'. Ordered by road distance when available. Capacity and opening status are not verified.';
   (j.notes||[]).forEach(n=>{const d=el('div','hint',n);d.style.marginTop='4px';out.append(d)});
   drawZones();S.zones.forEach((z,i)=>list.append(zoneCard(z,i)));
   selectZone(0,false);
   const pts=[[S.loc.lat,S.loc.lon],...S.zones.slice(0,3).map(z=>[z.lat,z.lon])];
   map.flyToBounds(L.latLngBounds(pts),{padding:[60,60],maxZoom:16,duration:.9});
-  setGpsStatus('Location set · '+S.zones.length+' safer-zone candidates mapped. Select one for turn-by-turn route details.','good');
+  setGpsStatus('Location set · '+S.zones.length+' mapped candidates. Nearest road-route options are listed first; verify availability on arrival.','good');
 }
 function zoneIcon(z,i,sel){return L.divIcon({className:'',html:'<div class="zm t-'+z.tier+(sel?' sel':'')+'"><span>'+(i+1)+'</span></div>',iconSize:sel?[36,36]:[30,30],iconAnchor:sel?[4,34]:[3,28]})}
 function midpoint(ll){let t=0,seg=[];for(let i=1;i<ll.length;i++){const d=map.distance(ll[i-1],ll[i]);seg.push(d);t+=d}let h=t/2;for(let i=0;i<seg.length;i++){if(h<=seg[i]){const f=seg[i]?h/seg[i]:0;return[ll[i][0]+(ll[i+1][0]-ll[i][0])*f,ll[i][1]+(ll[i+1][1]-ll[i][1])*f]}h-=seg[i]}return ll[0]}
@@ -733,8 +736,24 @@ function zoneDetail(z){
   const o=S.loc;
   L1.append(a('Open in OpenStreetMap','https://www.openstreetmap.org/directions?engine=fossgis_osrm_'+(S.mode==='foot'?'foot':'car')+'&route='+o.lat+'%2C'+o.lon+'%3B'+z.lat+'%2C'+z.lon),
             a('Open in Google Maps','https://www.google.com/maps/dir/?api=1&travelmode='+(S.mode==='foot'?'walking':'driving')+'&origin='+o.lat+','+o.lon+'&destination='+z.lat+','+z.lon));
-  d.append(L1);return d;
+  d.append(L1);
+  const unavailable=el('button','btn alt sm','Report full / closed / inaccessible');
+  unavailable.type='button';
+  unavailable.onclick=ev=>{ev.preventDefault();ev.stopPropagation();markZoneUnavailable(z.id)};
+  d.append(unavailable);
+  d.append(el('div','hint','If staff confirm this place cannot accept people, report it here. SYNAPSE will remove it from this search and select the next mapped candidate. This report is local to this session; it does not verify or publish live capacity.'));
+  return d;
 }
+function markZoneUnavailable(id){
+  const idx=S.zones.findIndex(z=>z.id===id);if(idx<0)return;
+  const removed=S.zones[idx];S.unavailable.add(id);
+  S.zones.splice(idx,1);S.sel=-1;zoneLayer.clearLayers();$('zoneList').innerHTML='';
+  if(!S.zones.length){$('routeStatus').textContent='All candidates in this search were reported full, closed or inaccessible. Search again for other mapped options or contact emergency services.';$('infoTitle').textContent='No remaining candidates';$('infoSub').textContent='All currently listed options were excluded in this session.';$('infoEta').hidden=true;$('infoSteps').hidden=true;toast('No remaining mapped alternatives.');return;}
+  $('routeStatus').textContent=removed.name+' was excluded from this session. Showing the next nearest mapped alternative; confirm its capacity with staff.';
+  S.zones.forEach((z,i)=>$('zoneList').append(zoneCard(z,i)));
+  drawZones();selectZone(0,true);setGpsStatus('Facility reported unavailable · selected the next mapped candidate.','warn');
+}
+
 bind('autoEvacuate','click',()=>findSafeZones(false));
 bind('infoStepsBtn','click',()=>{const o=$('infoSteps');o.hidden=!o.hidden;$('infoStepsBtn').textContent=o.hidden?'Show directions':'Hide directions'});
 
@@ -894,7 +913,7 @@ api('/api/auth/me',{},8000).then(j=>{if(j.authenticated){csrf=j.csrf;$('authOpen
 
 /* ============================== NETWORK / RIGHT PANEL ============================== */
 function netState(){const on=navigator.onLine;$('netChip').className='chip '+(on?'ok':'warn');$('netLabel').textContent=on?'ONLINE':'OFFLINE · LOCAL DATA ONLY'}
-window.addEventListener('online',()=>{netState();if(!activeBase&&store.get('synapse.base2','')!=='')setBase('Streets');toast('Back online','ok',2500)});
+window.addEventListener('online',()=>{netState();if(!activeBase)setBase('Streets');toast('Back online · loading street map tiles','ok',2500)});
 window.addEventListener('offline',()=>{netState();toast('You are offline. Installed regional data and the offline world map keep working.','',6000)});
 netState();
 function rightToggle(){const small=matchMedia('(max-width:1240px) and (min-width:901px)').matches;$('toggleRight').style.display=small?'':'none'}

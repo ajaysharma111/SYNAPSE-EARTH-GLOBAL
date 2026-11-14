@@ -13,6 +13,13 @@ class EngineTests(unittest.TestCase):
    p=Path(d)/"x.synapsepack";save_package(sample(),p);self.assertEqual(load_package(p)["manifest"]["region_id"],"test")
  def test_route(self):
   r=shortest_path(sample(),0,0,0.01,0.01);self.assertEqual(r["status"],"CANDIDATE_ROUTE");self.assertEqual(len(r["coordinates"]),3)
+ def test_route_respects_closed_way(self):
+  p=sample();r=shortest_path(p,0,0,0.01,0.01,closed_way_ids=["2"])
+  self.assertEqual(r["status"],"NO_CONNECTED_ROUTE")
+ def test_graph_cache_reused(self):
+  import synapse.engine as engine
+  p=sample();a=engine._graph_for(p);b=engine._graph_for(p)
+  self.assertIs(a[0],b[0]);self.assertIs(a[1],b[1])
  def test_missing_route(self):
   p=sample();p["edges"]=[];self.assertEqual(shortest_path(p,0,0,0,0.01)["status"],"NO_ROAD_DATA")
  def test_agents(self):

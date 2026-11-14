@@ -4,7 +4,7 @@ Everything here is *best effort*. The app is offline-first: installed regional p
 always tried first, and every function in this module degrades to an explicit "unavailable"
 result instead of inventing data. All network calls go through `fetch_json`, which tests replace.
 """
-import json, math, re, sys, time, urllib.parse, urllib.request
+import copy, json, math, re, sys, threading, time, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .engine import haversine, shortest_path
@@ -110,6 +110,7 @@ def overpass_query(lat, lon, shelter_r, other_r):
             ")->.s;"
             "(" +
             f'nwr{b}["amenity"~"^(hospital|clinic)$"];' +
+            f'nwr{b}["healthcare"~"^(hospital|clinic)$"];' +
             f'nwr{b}["amenity"~"^(community_centre|townhall|fire_station)$"];' +
             ")->.o;"
             ".s out tags center 150;.o out tags center 250;")
@@ -219,7 +220,7 @@ def elevations(points, fetch=fetch_json):
 
 
 def pick(cands, hazard, user_elev=None, elev=None):
-    """Rank and select a balanced list: up to 4 shelters, 2 refuge buildings, 2 medical facilities."""
+    """Score every mapped candidate; route distance determines final ordering later."""
     elev = elev or {}
     mult = {"shelter": 1.0, "refuge": 1.8, "medical": 1.5}
     for c in cands:
@@ -237,11 +238,9 @@ def pick(cands, hazard, user_elev=None, elev=None):
                 score *= 1.6; notes.append("lower than you (%d m) — avoid for %s" % (gain, hazard.lower()))
         c["notes"] = notes
         c["score"] = round(score)
-    quota = {"shelter": 4, "refuge": 2, "medical": 2}
-    chosen = []
-    for tier in ("shelter", "medical", "refuge"):
-        chosen += sorted([c for c in cands if c["tier"] == tier], key=lambda x: x["score"])[:quota[tier]]
-    return sorted(chosen, key=lambda x: (x["tier"] != "shelter", x["score"]))
+    # Do not silently hide mapped candidates behind category quotas. Users need
+    # alternatives if a facility is full, closed, inaccessible or unsuitable.
+    return sorted(cands, key=lambda x: (x["score"], x["straight_line_m"]))
 
 
 # --------------------------------------------------------------------------- routing
@@ -257,7 +256,7 @@ def route_online(lat, lon, dlat, dlon, mode="foot", fetch=fetch_json):
     last = None
     for tpl in ROUTERS.get(mode, ROUTERS["foot"]):
         try:
-            j = fetch(tpl.format(c=coords) + "?overview=full&geometries=geojson&steps=true", timeout=15)
+            j = fetch(tpl.format(c=coords) + "?overview=simplified&geometries=geojson&steps=true", timeout=15)
             if j.get("code") != "Ok" or not j.get("routes"):
                 last = j.get("code"); continue
             r = j["routes"][0]
@@ -315,7 +314,7 @@ def route_one(c, lat, lon, mode, fetch=fetch_json, allow_online=True):
 
 
 # --------------------------------------------------------------------------- orchestration
-def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json, use_online=True):
+def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json, use_online=True):
     hazard = hazard if hazard in HAZARDS else "Flood"
     mode = mode if mode in ROUTERS else "foot"
     notes, status = [], {"offline_data": False, "online_data": False}
@@ -347,7 +346,8 @@ def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json,
                 "message": "No mapped shelters, assembly points, community buildings or medical facilities were found within range. "
                            "SYNAPSE will not invent a safe destination. Install a regional map package, try again while online, "
                            "or contact local emergency services."}
-    # Pre-select by straight-line first so that we only route/elevation-check a handful of places.
+    # Keep every mapped candidate so the user can compare alternatives and report
+    # a full/closed facility. This is deliberately not a claim that every facility is safe.
     pre = pick(cands, hazard)
     elev = {}
     user_elev = None
@@ -360,7 +360,7 @@ def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json,
             pre = pick(cands, hazard, user_elev, elev)
         else:
             notes.append("Elevation data unavailable; high-ground ranking skipped.")
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=6) as ex:
         routes = list(ex.map(lambda c: route_one(c, lat, lon, mode, fetch, use_online), pre))
     dests = []
     for c, r in zip(pre, routes):
@@ -369,12 +369,51 @@ def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json,
         d["route"] = r
         d["verification"] = "Mapped record only: opening status, capacity, hazard exposure and safety are NOT verified."
         dests.append(d)
-    # Prefer destinations that actually have a road route; keep straight-line ones last.
-    dests.sort(key=lambda d: (d["route"]["status"] != "CANDIDATE_ROUTE", d["tier"] != "shelter", d["score"]))
+    # Rank by actual road distance where a road route exists. Keep direct-line
+    # fallbacks after road-routed candidates and label them as approximate.
+    dests.sort(key=lambda d: (
+        d["route"].get("status") != "CANDIDATE_ROUTE",
+        d["route"].get("distance_m", d["straight_line_m"]),
+        d["straight_line_m"], d["tier"] != "shelter"))
     for i, d in enumerate(dests):
         d["rank"] = i + 1
     return {"status": "OK", "hazard": hazard, "mode": mode, "user_elevation_m": user_elev, "destinations": dests,
             "sources": status, "notes": notes}
+
+
+
+# Short-lived response cache for repeat taps at the same GPS fix. Cache keys include
+# installed package identity/version, travel mode, hazard and data mode so a changed
+# location or newly installed region does not reuse unrelated results.
+_SAFEZONE_CACHE = {}
+_SAFEZONE_CACHE_LOCK = threading.RLock()
+_SAFEZONE_CACHE_TTL = 25.0
+_SAFEZONE_CACHE_MAX = 24
+
+
+def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json, use_online=True):
+    region_key = tuple(
+        (id(pkg), (meta or {}).get("region_id"), (pkg.get("manifest") or {}).get("generated_at"))
+        for pkg, meta in regions
+    )
+    key = (round(float(lat), 5), round(float(lon), 5), hazard, mode,
+           bool(use_online), id(fetch), region_key)
+    now = time.monotonic()
+    with _SAFEZONE_CACHE_LOCK:
+        hit = _SAFEZONE_CACHE.get(key)
+        if hit and now - hit[0] <= _SAFEZONE_CACHE_TTL:
+            return copy.deepcopy(hit[1])
+        if hit:
+            _SAFEZONE_CACHE.pop(key, None)
+
+    result = _safe_zones_uncached(regions, lat, lon, hazard, mode, fetch, use_online)
+    if result.get("status") == "OK":
+        with _SAFEZONE_CACHE_LOCK:
+            if len(_SAFEZONE_CACHE) >= _SAFEZONE_CACHE_MAX:
+                oldest = min(_SAFEZONE_CACHE, key=lambda k: _SAFEZONE_CACHE[k][0])
+                _SAFEZONE_CACHE.pop(oldest, None)
+            _SAFEZONE_CACHE[key] = (time.monotonic(), copy.deepcopy(result))
+    return result
 
 
 def emergency_number(cc):

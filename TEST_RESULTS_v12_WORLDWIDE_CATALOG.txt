@@ -1,0 +1,21 @@
+SYNAPSE EARTH v12 — WORLDWIDE CATALOGUE UPDATE
+
+Changes:
+- Global Geofabrik index normalized and validated.
+- Region entries carry ID, name, PBF URL, bounding box, parent and country metadata where provided.
+- Search field supports country/state/province/region names.
+- Results grouped by country when country metadata is available.
+- Successful global catalogue response cached at data/global_region_catalog.json.
+- Cached catalogue served when the online index is unavailable.
+- README documents the distinction between world boundary overview, catalogue entries and installed offline road data.
+
+Validation:
+- Python compilation: server.py and osm_import.py.
+- JavaScript syntax: node --check.
+- Existing automated test suite: 11 tests.
+- Catalogue cache fallback: manual local HTTP test with synthetic cached catalogue.
+Limitations:
+- Does not bundle all global roads/facilities.
+- Geofabrik extract availability and subdivision depth vary by country.
+- Initial regional extract installation requires internet and disk space.
+- OSM facility data does not verify real-world safety or operational status.

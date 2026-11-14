@@ -4,6 +4,11 @@ from synapse.online import classify, safe_zones, pick, dedupe, route_online, ip_
 from tests.test_engine import sample
 
 class ClassifyTests(unittest.TestCase):
+    def test_overpass_search_includes_healthcare_tagged_hospitals_and_clinics(self):
+        q = online.overpass_query(21.17, 72.83, 25000, 8000)
+        self.assertIn('["healthcare"~"^(hospital|clinic)$"]', q)
+        self.assertIn('["amenity"~"^(hospital|clinic)$"]', q)
+
     def test_bus_stop_shelter_is_not_a_shelter(self):
         self.assertIsNone(classify({"highway": "bus_stop", "shelter": "yes"}))
         self.assertIsNone(classify({"amenity": "shelter", "shelter_type": "picnic_shelter"}))
@@ -74,6 +79,12 @@ class OrchestrationTests(unittest.TestCase):
         c=[{"id":"a","tier":"shelter","straight_line_m":1000,"lat":0,"lon":0,"source":"x"},{"id":"b","tier":"shelter","straight_line_m":1200,"lat":0,"lon":0,"source":"x"}]
         out=pick(c,"Flood",user_elev=20,elev={"a":5,"b":60})
         self.assertEqual(out[0]["id"],"b")
+    def test_pick_keeps_all_candidates_instead_of_category_quotas(self):
+        c=[{"id":str(i),"tier":"shelter","straight_line_m":100+i,"lat":0,"lon":0,"source":"x"} for i in range(7)]
+        c += [{"id":"hospital","tier":"medical","straight_line_m":80,"lat":0,"lon":0,"source":"x"}]
+        out=pick(c,"Earthquake")
+        self.assertEqual(len(out),8)
+        self.assertEqual({x["id"] for x in out},{str(i) for i in range(7)}|{"hospital"})
     def test_ip_location_and_failure(self):
         ok=ip_location(lambda u,**k:{"success":True,"latitude":18.5,"longitude":73.8,"city":"Pune","region":"MH","country":"India","country_code":"in"})
         self.assertEqual(ok["status"],"APPROXIMATE_IP_LOCATION"); self.assertEqual(ok["country_code"],"IN")

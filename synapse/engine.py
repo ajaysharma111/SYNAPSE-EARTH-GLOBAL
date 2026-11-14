@@ -1,0 +1,122 @@
+import json, math, heapq, zipfile, io, hashlib, time
+from pathlib import Path
+
+SCHEMA="synapse-region-v1"
+def haversine(a,b):
+    r=6371000
+    p1,p2=math.radians(a["lat"]),math.radians(b["lat"])
+    dp=math.radians(b["lat"]-a["lat"]); dl=math.radians(b["lon"]-a["lon"])
+    x=math.sin(dp/2)**2+math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return 2*r*math.asin(math.sqrt(x))
+def validate(pkg):
+    m=pkg.get("manifest",{})
+    if m.get("schema")!=SCHEMA: raise ValueError("Unsupported region package schema")
+    nodes=pkg.get("nodes",[]); edges=pkg.get("edges",[])
+    ids={n["id"] for n in nodes}
+    if len(ids)!=len(nodes): raise ValueError("Duplicate node IDs")
+    for n in nodes:
+        if not (-90<=float(n["lat"])<=90 and -180<=float(n["lon"])<=180): raise ValueError("Invalid coordinates")
+    for e in edges:
+        if e["from"] not in ids or e["to"] not in ids: raise ValueError("Edge references missing node")
+        if float(e["distance_m"])<0: raise ValueError("Negative edge distance")
+    return pkg
+def save_package(pkg,path):
+    validate(pkg); raw=json.dumps(pkg,separators=(",",":"),ensure_ascii=False).encode()
+    digest=hashlib.sha256(raw).hexdigest()
+    with zipfile.ZipFile(path,"w",zipfile.ZIP_DEFLATED) as z:
+        z.writestr("region.json",raw);z.writestr("SHA256",digest)
+    return digest
+def load_package(path):
+    with zipfile.ZipFile(path) as z:
+        raw=z.read("region.json"); expected=z.read("SHA256").decode().strip()
+    if hashlib.sha256(raw).hexdigest()!=expected: raise ValueError("Package checksum mismatch")
+    return validate(json.loads(raw))
+def activate_package(path,data_dir):
+    pkg=load_package(path); dest=Path(data_dir);dest.mkdir(parents=True,exist_ok=True)
+    target=dest/(pkg["manifest"]["region_id"]+".json")
+    tmp=target.with_suffix(".tmp");tmp.write_text(json.dumps(pkg,ensure_ascii=False));tmp.replace(target)
+    return target
+_SKIP={"world_countries.geojson","global_region_catalog.json"}
+_CACHE={}
+def _load_checked(path):
+    st=path.stat(); key=str(path); hit=_CACHE.get(key)
+    if hit and hit[0]==st.st_mtime_ns: return hit[1]
+    pkg=validate(json.loads(path.read_text()))
+    if len(_CACHE)>=3: _CACHE.pop(next(iter(_CACHE)))
+    _CACHE[key]=(st.st_mtime_ns,pkg); return pkg
+def load_regions(data_dir):
+    """List installed packages from small .manifest sidecars (created on first sight), not by parsing every package."""
+    out=[]
+    for p in Path(data_dir).glob("*.json"):
+        if p.name in _SKIP: continue
+        mp=p.with_suffix(".manifest")
+        try:
+            if mp.exists() and mp.stat().st_mtime_ns>=p.stat().st_mtime_ns: m=json.loads(mp.read_text())
+            else:
+                m=json.loads(p.read_text())["manifest"];mp.write_text(json.dumps(m))
+            out.append({**m,"nodes_count":p.stat().st_size})
+        except Exception: pass
+    return sorted(out,key=lambda x:x.get("name",""))
+def get_region(data_dir,rid):
+    d=Path(data_dir);direct=d/(str(rid)+".json")
+    if direct.is_file() and direct.name not in _SKIP:
+        try:
+            pkg=_load_checked(direct)
+            if pkg["manifest"]["region_id"]==rid:return pkg
+        except Exception: pass
+    for p in d.glob("*.json"):
+        if p.name in _SKIP: continue
+        try:
+            pkg=_load_checked(p)
+            if pkg["manifest"]["region_id"]==rid:return pkg
+        except Exception: continue
+    raise FileNotFoundError(rid)
+def nearest_node(pkg,lat,lon):
+    best=None;bd=float("inf")
+    for n in pkg["nodes"]:
+        d=haversine({"lat":lat,"lon":lon},n)
+        if d<bd:best,bd=n,d
+    if best is None: raise ValueError("This region has no routable road nodes")
+    return best,bd
+def shortest_path(pkg,start_lat,start_lon,end_lat,end_lon,closed_way_ids=None):
+    if not pkg["nodes"] or not pkg["edges"]: return {"status":"NO_ROAD_DATA","message":"No road graph is installed for this region."}
+    start,sd=nearest_node(pkg,start_lat,start_lon);end,ed=nearest_node(pkg,end_lat,end_lon)
+    adj={}
+    closed=set(str(x) for x in (closed_way_ids or []))
+    for e in pkg["edges"]:
+        if str(e.get("way_id","")) in closed: continue
+        a,b=e["from"],e["to"];w=float(e["distance_m"])
+        adj.setdefault(a,[]).append((b,w,e))
+        if not e.get("oneway",False):adj.setdefault(b,[]).append((a,w,e))
+    q=[(0,start["id"])];dist={start["id"]:0};prev={}
+    while q:
+        d,u=heapq.heappop(q)
+        if d!=dist.get(u):continue
+        if u==end["id"]:break
+        for v,w,e in adj.get(u,[]):
+            nd=d+w
+            if nd<dist.get(v,float("inf")):
+                dist[v]=nd;prev[v]=(u,e);heapq.heappush(q,(nd,v))
+    if end["id"] not in dist:return {"status":"NO_CONNECTED_ROUTE","message":"No connected route exists in the installed graph. No route was invented."}
+    ids=[end["id"]];ways=[];cur=end["id"]
+    while cur!=start["id"]:
+        cur0,e=prev[cur];ways.append(e);cur=cur0;ids.append(cur)
+    ids.reverse();ways.reverse();nodes={n["id"]:n for n in pkg["nodes"]}
+    return {"status":"CANDIDATE_ROUTE","distance_m":round(dist[end["id"]]),"snap_start_m":round(sd),"snap_end_m":round(ed),
+            "node_ids":ids,"coordinates":[[nodes[i]["lon"],nodes[i]["lat"]] for i in ids],
+            "road_names":list(dict.fromkeys(e.get("name","unnamed road") for e in ways))[:20],
+            "warning":"Candidate route only. Road closures, hazard exposure, access restrictions and emergency authority approval must be verified."}
+def run_agents(pkg,incident,context=None):
+    m=pkg["manifest"];nodes=len(pkg["nodes"]);edges=len(pkg["edges"]);places=pkg.get("places",[]);fac=pkg.get("facilities",[])
+    severity=max(1,min(5,int(incident.get("severity",3))))
+    kind=str(incident.get("type","Unknown"))
+    cov={"agent":"Coverage Agent","status":"complete","region":m.get("name"),"source":m.get("source"),"updated":m.get("generated_at"),"road_nodes":nodes,"road_segments":edges,"place_records":len(places),"coverage":"ROAD_GRAPH_AVAILABLE" if edges else "NO_ROAD_GRAPH","limitations":m.get("limitations",[])}
+    haz={"agent":"Hazard Agent","status":"complete","scenario":kind,"severity":severity,"method":"Operator-provided scenario; offline mode does not claim live hazard detection","assumptions":["No live weather, seismic, fire perimeter or flood sensor feed is assumed","Severity is an operator input, not a measured probability"]}
+    infra={"agent":"Infrastructure Agent","status":"complete","facility_records":len(fac),"facility_types":dict((k,sum(1 for f in fac if f.get("type")==k)) for k in sorted(set(f.get("type","unknown") for f in fac))),"verification":"OSM mapped objects are not confirmation of operational status, capacity or safety"}
+    route={"agent":"Route Agent","status":"not_run","reason":"Start and destination coordinates required; graph availability alone does not imply a safe route"}
+    ctx=context if isinstance(context,dict) else {}
+    zones=[z for z in (ctx.get("safe_zones") or []) if isinstance(z,dict)][:5]
+    if zones:
+        route={"agent":"Route Agent","status":"complete","candidates":[{"name":str(z.get("name"))[:80],"type":z.get("tier_label"),"route_km":round((z.get("distance_m") or 0)/1000,2),"route_source":z.get("route_source")} for z in zones],"reason":"Candidate routes only; hazard exposure and closures are not modelled"}
+    coord={"agent":"Response Coordinator","status":"complete","actions":["Confirm incident location and time with local authorities","Check current road closures, bridges, underpasses and hazard perimeter","Verify shelters, hospitals and facility capacity","Use only candidate routes reviewed by a trained human","Record decisions and source timestamps"],"human_approval_required":True}
+    return {"agents":[cov,haz,infra,route,coord],"summary":{"decision_support_only":True,"human_approval_required":True,"route_safety_certified":False}}

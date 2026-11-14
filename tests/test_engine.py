@@ -1,0 +1,25 @@
+import tempfile,unittest
+from pathlib import Path
+from synapse.engine import *
+def sample():
+ return {"manifest":{"schema":SCHEMA,"region_id":"test","name":"Test region","country_code":"ZZ","generated_at":"test","source":"synthetic test","bbox":[-0.1,-0.1,0.1,0.1]},
+ "nodes":[{"id":"a","lat":0,"lon":0},{"id":"b","lat":0,"lon":0.01},{"id":"c","lat":0.01,"lon":0.01}],
+ "edges":[{"from":"a","to":"b","distance_m":1112,"oneway":False,"way_id":"1","name":"A street"},{"from":"b","to":"c","distance_m":1112,"oneway":False,"way_id":"2","name":"B street"}],
+ "places":[{"id":"p","name":"Village","place_type":"village","lat":0,"lon":0}],
+ "facilities":[]}
+class EngineTests(unittest.TestCase):
+ def test_package_roundtrip(self):
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d)/"x.synapsepack";save_package(sample(),p);self.assertEqual(load_package(p)["manifest"]["region_id"],"test")
+ def test_route(self):
+  r=shortest_path(sample(),0,0,0.01,0.01);self.assertEqual(r["status"],"CANDIDATE_ROUTE");self.assertEqual(len(r["coordinates"]),3)
+ def test_missing_route(self):
+  p=sample();p["edges"]=[];self.assertEqual(shortest_path(p,0,0,0,0.01)["status"],"NO_ROAD_DATA")
+ def test_agents(self):
+  a=run_agents(sample(),{"type":"Flood","severity":4});self.assertEqual(len(a["agents"]),5);self.assertTrue(a["summary"]["human_approval_required"])
+ def test_corrupt_package(self):
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d)/"x.synapsepack";save_package(sample(),p)
+   with zipfile.ZipFile(p,"a") as z:z.writestr("SHA256","bad")
+   with self.assertRaises(ValueError):load_package(p)
+if __name__=="__main__":unittest.main()

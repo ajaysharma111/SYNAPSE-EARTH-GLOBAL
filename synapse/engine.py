@@ -71,41 +71,86 @@ def get_region(data_dir,rid):
             if pkg["manifest"]["region_id"]==rid:return pkg
         except Exception: continue
     raise FileNotFoundError(rid)
+# Small bounded caches keep repeated shelter-route requests fast without
+# retaining every regional graph indefinitely.
+_GRAPH_CACHE={}
+_SNAP_CACHE={}
+
+def _graph_for(pkg):
+    """Build adjacency once per loaded package; reuse it for subsequent routes."""
+    key=id(pkg)
+    hit=_GRAPH_CACHE.get(key)
+    if hit is not None and hit[0] is pkg:
+        return hit[1],hit[2]
+    nodes={n["id"]:n for n in pkg["nodes"]}
+    adj={}
+    for e in pkg["edges"]:
+        a,b=e["from"],e["to"]
+        w=float(e["distance_m"])
+        adj.setdefault(a,[]).append((b,w,e))
+        if not e.get("oneway",False):
+            adj.setdefault(b,[]).append((a,w,e))
+    if len(_GRAPH_CACHE)>=3:
+        _GRAPH_CACHE.pop(next(iter(_GRAPH_CACHE)))
+    _GRAPH_CACHE[key]=(pkg,adj,nodes)
+    return adj,nodes
+
 def nearest_node(pkg,lat,lon):
+    key=(id(pkg),float(lat),float(lon))
+    hit=_SNAP_CACHE.get(key)
+    if hit is not None and hit[0] is pkg:
+        return hit[1],hit[2]
     best=None;bd=float("inf")
+    point={"lat":lat,"lon":lon}
     for n in pkg["nodes"]:
-        d=haversine({"lat":lat,"lon":lon},n)
+        d=haversine(point,n)
         if d<bd:best,bd=n,d
     if best is None: raise ValueError("This region has no routable road nodes")
+    if len(_SNAP_CACHE)>=256:
+        _SNAP_CACHE.pop(next(iter(_SNAP_CACHE)))
+    _SNAP_CACHE[key]=(pkg,best,bd)
     return best,bd
+
 def shortest_path(pkg,start_lat,start_lon,end_lat,end_lon,closed_way_ids=None):
-    if not pkg["nodes"] or not pkg["edges"]: return {"status":"NO_ROAD_DATA","message":"No road graph is installed for this region."}
-    start,sd=nearest_node(pkg,start_lat,start_lon);end,ed=nearest_node(pkg,end_lat,end_lon)
-    adj={}
+    if not pkg["nodes"] or not pkg["edges"]:
+        return {"status":"NO_ROAD_DATA","message":"No road graph is installed for this region."}
+    start,sd=nearest_node(pkg,start_lat,start_lon)
+    end,ed=nearest_node(pkg,end_lat,end_lon)
+    adj,nodes=_graph_for(pkg)
     closed=set(str(x) for x in (closed_way_ids or []))
-    for e in pkg["edges"]:
-        if str(e.get("way_id","")) in closed: continue
-        a,b=e["from"],e["to"];w=float(e["distance_m"])
-        adj.setdefault(a,[]).append((b,w,e))
-        if not e.get("oneway",False):adj.setdefault(b,[]).append((a,w,e))
-    q=[(0,start["id"])];dist={start["id"]:0};prev={}
+
+    # A* uses straight-line distance as an admissible lower-bound heuristic.
+    # OSM edge lengths are physical road distances, so this never overestimates
+    # the remaining path length and preserves shortest-path correctness.
+    def heuristic(node_id):
+        return haversine(nodes[node_id],end)
+
+    q=[(heuristic(start["id"]),0.0,start["id"])]
+    dist={start["id"]:0.0};prev={}
     while q:
-        d,u=heapq.heappop(q)
-        if d!=dist.get(u):continue
-        if u==end["id"]:break
-        for v,w,e in adj.get(u,[]):
+        _,d,u=heapq.heappop(q)
+        if d!=dist.get(u):
+            continue
+        if u==end["id"]:
+            break
+        for v,w,e in adj.get(u,()):
+            if str(e.get("way_id","")) in closed:
+                continue
             nd=d+w
             if nd<dist.get(v,float("inf")):
-                dist[v]=nd;prev[v]=(u,e);heapq.heappush(q,(nd,v))
-    if end["id"] not in dist:return {"status":"NO_CONNECTED_ROUTE","message":"No connected route exists in the installed graph. No route was invented."}
+                dist[v]=nd;prev[v]=(u,e)
+                heapq.heappush(q,(nd+heuristic(v),nd,v))
+    if end["id"] not in dist:
+        return {"status":"NO_CONNECTED_ROUTE","message":"No connected route exists in the installed graph. No route was invented."}
     ids=[end["id"]];ways=[];cur=end["id"]
     while cur!=start["id"]:
         cur0,e=prev[cur];ways.append(e);cur=cur0;ids.append(cur)
-    ids.reverse();ways.reverse();nodes={n["id"]:n for n in pkg["nodes"]}
+    ids.reverse();ways.reverse()
     return {"status":"CANDIDATE_ROUTE","distance_m":round(dist[end["id"]]),"snap_start_m":round(sd),"snap_end_m":round(ed),
             "node_ids":ids,"coordinates":[[nodes[i]["lon"],nodes[i]["lat"]] for i in ids],
             "road_names":list(dict.fromkeys(e.get("name","unnamed road") for e in ways))[:20],
             "warning":"Candidate route only. Road closures, hazard exposure, access restrictions and emergency authority approval must be verified."}
+
 def run_agents(pkg,incident,context=None):
     m=pkg["manifest"];nodes=len(pkg["nodes"]);edges=len(pkg["edges"]);places=pkg.get("places",[]);fac=pkg.get("facilities",[])
     severity=max(1,min(5,int(incident.get("severity",3))))

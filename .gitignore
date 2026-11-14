@@ -7,3 +7,8 @@ __pycache__/
 downloads/
 regions/*.synapsepack
 data/global_region_catalog.json
+
+data/*.sqlite3
+data/*.sqlite3-*
+
+.venv_old/

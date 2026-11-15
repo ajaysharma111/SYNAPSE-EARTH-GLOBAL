@@ -95,19 +95,52 @@ def _graph_for(pkg):
     _GRAPH_CACHE[key]=(pkg,adj,nodes)
     return adj,nodes
 
+_SPATIAL_CACHE={}
+_SPATIAL_CELL_DEG=0.01
+
+def _spatial_index(pkg):
+    """Build a small geographic grid once so nearest-road-node lookup avoids scanning every node."""
+    key=id(pkg)
+    hit=_SPATIAL_CACHE.get(key)
+    if hit is not None and hit[0] is pkg:return hit[1]
+    cell=_SPATIAL_CELL_DEG; grid={}
+    for node in pkg["nodes"]:
+        cell_key=(math.floor(float(node["lat"])/cell),math.floor(float(node["lon"])/cell))
+        grid.setdefault(cell_key,[]).append(node)
+    index={"grid":grid,"cell":cell}
+    if len(_SPATIAL_CACHE)>=3:_SPATIAL_CACHE.pop(next(iter(_SPATIAL_CACHE)))
+    _SPATIAL_CACHE[key]=(pkg,index)
+    return index
+
 def nearest_node(pkg,lat,lon):
-    key=(id(pkg),float(lat),float(lon))
+    lat,lon=float(lat),float(lon)
+    key=(id(pkg),lat,lon)
     hit=_SNAP_CACHE.get(key)
-    if hit is not None and hit[0] is pkg:
-        return hit[1],hit[2]
-    best=None;bd=float("inf")
-    point={"lat":lat,"lon":lon}
-    for n in pkg["nodes"]:
-        d=haversine(point,n)
-        if d<bd:best,bd=n,d
-    if best is None: raise ValueError("This region has no routable road nodes")
-    if len(_SNAP_CACHE)>=256:
-        _SNAP_CACHE.pop(next(iter(_SNAP_CACHE)))
+    if hit is not None and hit[0] is pkg:return hit[1],hit[2]
+    if not pkg["nodes"]:raise ValueError("This region has no routable road nodes")
+    index=_spatial_index(pkg);grid=index["grid"];cell=index["cell"]
+    row,col=math.floor(lat/cell),math.floor(lon/cell)
+    best=None;bd=float("inf");point={"lat":lat,"lon":lon}
+    max_ring=max((abs(k[0]-row)+abs(k[1]-col) for k in grid),default=0)
+    # Visit the closest grid cells first. Once the unvisited rectangle is
+    # farther away than the best exact haversine distance, no unseen node
+    # can improve the answer.
+    for ring in range(max_ring+1):
+        for dr in range(-ring,ring+1):
+            dc=ring-abs(dr)
+            cols=(col,) if dc==0 else (col-dc,col+dc)
+            for cc in cols:
+                for node in grid.get((row+dr,cc),()):
+                    d=haversine(point,node)
+                    if d<bd:best,bd=node,d
+        south=(row-ring)*cell;north=(row+ring+1)*cell
+        west=(col-ring)*cell;east=(col+ring+1)*cell
+        dy=max(south-lat,0.0,lat-north)*111195.0
+        # cos(latitude)<=1 makes this longitude bound conservative.
+        dx=max(west-lon,0.0,lon-east)*111195.0
+        if best is not None and math.hypot(dx,dy)>bd:break
+    if best is None:raise ValueError("This region has no routable road nodes")
+    if len(_SNAP_CACHE)>=256:_SNAP_CACHE.pop(next(iter(_SNAP_CACHE)))
     _SNAP_CACHE[key]=(pkg,best,bd)
     return best,bd
 

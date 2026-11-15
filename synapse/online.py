@@ -121,28 +121,37 @@ def _log(msg):
 
 
 def _overpass_one(ep, q, fetch):
-    return fetch(ep, data={"data": q}, timeout=28)
+    # A short per-mirror timeout keeps an online search from monopolising the local API.
+    return fetch(ep, data={"data": q}, timeout=10)
 
 
 def online_candidates(lat, lon, shelter_r=25000, other_r=8000, fetch=fetch_json):
-    """Query several Overpass mirrors in parallel and use the first that answers."""
+    """Query Overpass mirrors concurrently with a bounded wait; return the first valid reply."""
     q = overpass_query(lat, lon, shelter_r, other_r)
     errors, j = [], None
-    with ThreadPoolExecutor(max_workers=len(OVERPASS)) as ex:
-        futs = {ex.submit(_overpass_one, ep, q, fetch): ep for ep in OVERPASS}
-        for f in as_completed(futs):
+    ex = ThreadPoolExecutor(max_workers=len(OVERPASS))
+    futs = {ex.submit(_overpass_one, ep, q, fetch): ep for ep in OVERPASS}
+    try:
+        for f in as_completed(futs, timeout=12):
             try:
-                j = f.result()
-                if isinstance(j, dict) and "elements" in j:
+                candidate = f.result()
+                if isinstance(candidate, dict) and "elements" in candidate:
+                    j = candidate
                     break
                 errors.append("%s: unexpected reply" % urllib.parse.urlparse(futs[f]).netloc)
             except Exception as e:  # noqa: BLE001 - network failures are expected and reported
                 errors.append("%s: %s" % (urllib.parse.urlparse(futs[f]).netloc, str(e)[:80]))
-        else:
-            j = None
+    except TimeoutError:
+        errors.append("Overpass mirrors exceeded the 12-second search deadline")
+    finally:
+        for f in futs:
+            if not f.done():
+                f.cancel()
+        # Do not block the HTTP request waiting for slower mirrors after one answered.
+        ex.shutdown(wait=False, cancel_futures=True)
     if j is None:
         _log("Overpass failed: " + "; ".join(errors))
-        raise ConnectionError("all Overpass servers failed (" + "; ".join(errors) + ")")
+        raise ConnectionError("Overpass search unavailable (" + "; ".join(errors) + ")")
     out = []
     for el in j.get("elements", []):
         tags = el.get("tags") or {}
@@ -333,13 +342,15 @@ def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=f
             status["online_data"] = True
         except Exception as e:  # noqa: BLE001
             why = str(e)[:300]
-        if not [c for c in on if c["tier"]]:
+        # Nominatim is a fallback only when Overpass is unavailable. A valid empty
+        # Overpass response means no matching mapped facilities were found; do not
+        # issue six extra geocoder requests and make the user wait unnecessarily.
+        if why:
             try:
                 fb = nominatim_candidates(lat, lon, fetch=fetch, pause=0 if fetch is not fetch_json else 1.05)
                 if fb:
                     on += fb; status["online_data"] = True
-                    if why:
-                        notes.append("Main OpenStreetMap shelter service was unreachable, so results come from the slower fallback search and may be less complete.")
+                    notes.append("Overpass was unavailable; candidates come from the Nominatim fallback and may be less complete.")
                     why = None
             except Exception as e2:  # noqa: BLE001
                 why = (why + " | " if why else "") + "fallback: " + str(e2)[:120]
@@ -367,7 +378,10 @@ def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=f
                 "notes": notes, "coverage_status": coverage, "message": message}
     # Keep every mapped candidate so the user can compare alternatives and report
     # a full/closed facility. This is deliberately not a claim that every facility is safe.
-    pre = pick(cands, hazard)
+    # Bound live routing work. Some dense urban Overpass results contain many
+    # facilities; routing every candidate can keep the API busy for minutes.
+    # Return the best 12 mapped candidates and calculate road routes for this set.
+    pre = pick(cands, hazard)[:12]
     elev = {}
     user_elev = None
     if use_online and status["online_data"] and hazard in HIGH_GROUND_HAZARDS:

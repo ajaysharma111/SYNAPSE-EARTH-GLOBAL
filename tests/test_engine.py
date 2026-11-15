@@ -33,7 +33,7 @@ class EngineTests(unittest.TestCase):
   self.assertGreater(r["snap_end_m"],r["max_snap_m"])
  def test_route_rejects_distinct_points_collapsed_to_same_node(self):
   p=sample()
-  r=shortest_path(p,0,0,0,0.0002)
+  r=shortest_path(p,0,0,0,0.0003)
   self.assertEqual(r["status"],"SAME_NODE_SNAP")
  def test_agents(self):
   a=run_agents(sample(),{"type":"Flood","severity":4});self.assertEqual(len(a["agents"]),5);self.assertTrue(a["summary"]["human_approval_required"])

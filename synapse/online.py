@@ -381,7 +381,7 @@ def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=f
     # Bound live routing work. Some dense urban Overpass results contain many
     # facilities; routing every candidate can keep the API busy for minutes.
     # Return the best 12 mapped candidates and calculate road routes for this set.
-    pre = pick(cands, hazard)[:12]
+    pre = pick(cands, hazard)[:6]
     elev = {}
     user_elev = None
     if use_online and status["online_data"] and hazard in HIGH_GROUND_HAZARDS:

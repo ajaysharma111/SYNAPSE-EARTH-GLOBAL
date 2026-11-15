@@ -63,6 +63,13 @@ class OrchestrationTests(unittest.TestCase):
     def test_everything_offline_never_invents(self):
         r=safe_zones([], 0, 0, "Flood", "foot", fetch=broken_fetch)
         self.assertEqual(r["status"], "NO_MAPPED_SAFE_ZONES"); self.assertEqual(r["destinations"], [])
+    def test_offline_without_covering_region_reports_missing_coverage(self):
+        r=safe_zones([], 21.18581, 72.86337, "Flood", "foot", fetch=broken_fetch, use_online=False)
+        self.assertEqual(r["status"], "NO_MAPPED_SAFE_ZONES")
+        self.assertEqual(r["coverage_status"], "NO_INSTALLED_REGION")
+        self.assertIn("no installed regional map package covers this location", r["message"].lower())
+        self.assertFalse(r["sources"]["online_data"])
+
     def test_offline_package_routes_without_network(self):
         pkg=sample(); pkg["facilities"]=[{"id":"9","name":"Hall","type":"assembly_point","emergency":"assembly_point","lat":0.01,"lon":0.01,"amenity":"","healthcare":"","shelter":""}]
         r=safe_zones([(pkg,{"region_id":"test"})], 0, 0, "Earthquake", "foot", fetch=broken_fetch)

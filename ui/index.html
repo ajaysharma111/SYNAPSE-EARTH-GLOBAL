@@ -763,7 +763,7 @@ function stepText(s){const m=s.maneuver||{},t=m.type||'',mod=m.modifier||'',n=s.
 async function routeOnline(a,b,mode,signal){
   const c=a.lon.toFixed(6)+','+a.lat.toFixed(6)+';'+b.lon.toFixed(6)+','+b.lat.toFixed(6);
   const j=await raceFirst(ROUTERS[mode].map(u=>sig=>{const k=new AbortController();[signal,sig].forEach(x=>{if(x)x.addEventListener('abort',()=>k.abort(),{once:true})});
-    return fetchJ(u+c+'?overview=full&geometries=geojson&steps=true',{},9000,k.signal).then(r=>{if(r.code!=='Ok'||!r.routes||!r.routes.length)throw new Error(r.code||'no route');return r})}));
+    return fetchJ(u+c+'?overview=full&geometries=geojson&steps=true',{},6500,k.signal).then(r=>{if(r.code!=='Ok'||!r.routes||!r.routes.length)throw new Error(r.code||'no route');return r})}));
   const r=j.routes[0],steps=[],names=[];
   (r.legs||[]).forEach(l=>(l.steps||[]).forEach(s=>{if(s.name)names.push(s.name);const m=s.maneuver||{};steps.push({text:stepText(s),distance_m:Math.round(s.distance||0),loc:m.location||null,type:m.type||'',modifier:m.modifier||''})}));
   return {status:'CANDIDATE_ROUTE',source:'online road routing (OpenStreetMap data)',mode,distance_m:Math.round(r.distance),duration_s:Math.round(r.duration),coordinates:r.geometry.coordinates,road_names:[...new Set(names)].slice(0,12),steps,
@@ -774,7 +774,7 @@ function straightRoute(a,b,why){const d=Math.round(hav(a.lat,a.lon,b.lat,b.lon))
     warning:'No road route could be calculated'+(why?': '+why:'')+'. The dashed line is a direct bearing only and may cross water, barriers or hazards.'}}
 async function routeAny(a,b,mode,signal){try{return await routeOnline(a,b,mode,signal)}catch(e){return straightRoute(a,b,e&&e.message)}}
 
-/* progressive search: quick small-radius pass first, widen only if needed; the whole thing is capped at 40 s */
+/* progressive search: quick small-radius pass first, widen only if needed; the whole thing is capped at 35 s */
 /* Remember every shelter/hospital found online on this device so the same area still works with no internet later. */
 const ZC={key:'synapse.zonecache.v1',max:900,
   load(){try{return JSON.parse(localStorage.getItem(this.key)||'[]')}catch(e){return[]}},
@@ -792,33 +792,35 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
     if(d.length&&tok===zoneToken)onUpdate({dests:d,notes:[],userElev:null,label:'saved'});
     return {ok:d.length>0,notes:['You are offline — showing installed offline maps'+(d.length?' and places saved on this device from earlier online searches (direct-line distances).':'. Nothing is saved for this area yet; search once while online, or install a regional map.')]};
   }
-  const budget=new AbortController(),timer=setTimeout(()=>budget.abort(),48000),notes=[];
-  const routed=new Map();let userElev=null,elev={},all=[];
+  const budget=new AbortController(),timer=setTimeout(()=>budget.abort(),35000),notes=[];   // hard cap: 35 s
+  const routed=new Map();let userElev=null,elev={},all=[],elevP=null;
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  const addAll=l=>{const ids=new Set(all.map(c=>c.id));(l||[]).forEach(c=>{if(!ids.has(c.id)){ids.add(c.id);all.push(c)}})};
   const emit=async(label)=>{
     ZC.add(all);const cands=dedupeC(all);
-    if(!userElev&&(hazard==='Flood'||hazard==='Cyclone')&&cands.length){
-      const ev=await fetchElevations([[lat,lon],...cands.slice(0,99).map(c=>[c.lat,c.lon])],budget.signal);
-      if(ev){userElev=ev[0];cands.slice(0,99).forEach((c,i)=>{elev[c.id]=ev[i+1]})}}
+    if((hazard==='Flood'||hazard==='Cyclone')&&cands.length&&!elevP){
+      const pts=cands.slice(0,99);
+      elevP=fetchElevations([[lat,lon],...pts.map(c=>[c.lat,c.lon])],budget.signal).then(ev=>{if(ev){userElev=ev[0];pts.forEach((c,i)=>{elev[c.id]=ev[i+1]})}})}
+    if(elevP&&userElev==null)await Promise.race([elevP,sleep(2000)]);     // never wait long for elevation
     const chosen=pickC(cands,hazard,userElev,elev);
     await Promise.all(chosen.map(async(c,i)=>{const k=c.id+'|'+mode;if(i<14&&!routed.has(k))routed.set(k,routeAny({lat,lon},c,mode,budget.signal));c.route=routed.has(k)?await routed.get(k):straightRoute({lat,lon},c,'not routed yet')}));
     if(tok!==zoneToken)return;
     onUpdate({dests:chosen,notes:[...notes],userElev,label});
   };
   try{
-    let phaseA=null,usedFallback=false;
-    try{phaseA=await overpassCandidates(lat,lon,8000,6000,12,budget.signal)}
-    catch(e){
-      try{phaseA=await nominatimCandidates(lat,lon,budget.signal);usedFallback=true;notes.push('Main OpenStreetMap shelter service was unreachable, so results come from a slower fallback search and may be less complete.')}
-      catch(e2){notes.push('Online shelter search failed: '+(e&&e.message)+' | fallback: '+(e2&&e2.message))}
-    }
-    if(phaseA){all=phaseA;await emit('nearby')}
-    if(!usedFallback&&phaseA!==null&&(tok===zoneToken)){
-      try{const wide=await overpassCandidates(lat,lon,25000,12000,25,budget.signal);const ids=new Set(all.map(c=>c.id));wide.forEach(c=>{if(!ids.has(c.id))all.push(c)});await emit('wide')}
-      catch(e){if(!all.length)notes.push('Wider shelter search failed: '+(e&&e.message))}
-    }
-    const nearShelter=()=>dedupeC(all).some(c=>c.tier==='shelter'&&hav(lat,lon,c.lat,c.lon)<10000);
-    if(tok===zoneToken&&!usedFallback&&phaseA!==null&&!nearShelter()){
-      try{const far=await overpassCandidates(lat,lon,80000,30000,25,budget.signal);const ids=new Set(all.map(c=>c.id));far.forEach(c=>{if(!ids.has(c.id))all.push(c)});if(all.length)notes.push('No shelter was found close to you, so the search was widened to about 80 km.');await emit('far')}
+    // near and wide passes start AT THE SAME TIME; near results are shown the moment they arrive
+    const A=overpassCandidates(lat,lon,8000,6000,8,budget.signal),B=overpassCandidates(lat,lon,25000,12000,14,budget.signal);
+    A.catch(()=>{});B.catch(()=>{});
+    let a=null,b=null,why='';
+    try{a=await A}catch(e){why=e&&e.message}
+    if(a){addAll(a);await emit('nearby')}
+    try{b=await B}catch(e){why=why||(e&&e.message)}
+    if(b){addAll(b);await emit('wide')}
+    if(!a&&!b){
+      try{addAll(await nominatimCandidates(lat,lon,budget.signal));notes.push('Main OpenStreetMap shelter service was unreachable, so results come from a slower fallback search and may be less complete.');await emit('wide')}
+      catch(e2){notes.push('Online shelter search failed: '+why+' | fallback: '+(e2&&e2.message))}
+    }else if(tok===zoneToken&&!dedupeC(all).some(c=>c.tier==='shelter'&&hav(lat,lon,c.lat,c.lon)<10000)){
+      try{addAll(await overpassCandidates(lat,lon,80000,30000,20,budget.signal));if(all.length)notes.push('No shelter was found close to you, so the search was widened to about 80 km.');await emit('far')}
       catch(e){if(!all.length)notes.push('Wide-area shelter search failed: '+(e&&e.message))}
     }
     if(!all.length&&tok===zoneToken){
@@ -864,7 +866,7 @@ async function findSafeZones(auto=false){
   if(NAV.on)return;
   const tok=++zoneToken,lat=S.loc.lat,lon=S.loc.lon,hazard=$('kind').value,mode=S.mode,t0=performance.now();
   btn.disabled=true;
-  out.textContent='Searching installed maps and OpenStreetMap… first results usually appear within a few seconds.';
+  out.textContent='Searching installed maps and OpenStreetMap… the full list is ready in about 30 seconds.';
   list.innerHTML='';for(let i=0;i<3;i++)list.append(el('div','skeleton'));
   let offD=[],onD=[],notes=[],elevNow=null,rendered=false,first=true;
   const prevId=()=>S.zones[S.sel]&&S.zones[S.sel].id;

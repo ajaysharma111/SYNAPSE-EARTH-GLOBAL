@@ -10,6 +10,7 @@ Live demo (Render): https://synapse-earth-global.onrender.com
 - **Shortest + safest ranking**: cost = real travel time x safety factor (shelter 1.0, hospital 1.2, community building 1.3, hazard-aware: flood/cyclone prefer higher ground, earthquake prefers open assembly points). Cards show **Best balance / Shortest / Safest** badges. Up to 30 zones listed and mapped.
 - **Routes**: installed offline road graph first, then online OSRM (foot / car), then a clearly marked straight line.
 - **Start navigation**: live remaining distance, ETA, next turn, off-route re-routing, voice, wake lock. On arrival, **Find next safer zone from here** searches again from that point.
+- **Map always visible**: online or offline. Missing detail tiles are rebuilt by enlarging the nearest saved lower-zoom tile; about 100 tiles around your location (zoom 5-16) are saved while online; with no tiles at all you still get country shapes, a lat/lon grid, your position, zones, routes and installed roads. The map re-syncs to its container on resize so it never goes blank after zooming.
 - **Offline**: installed regional maps, offline country boundaries, a service worker (app shell + visited tiles), and places found online are remembered on the device for later offline use.
 - **Regional maps install automatically**: the server downloads Geofabrik extracts in the background (India first, then every other country, default 150 MB per-extract cap). Nobody has to press Install; downloads happen once and are skipped if already on disk.
 - Guest mode, optional accounts (SQLite, scrypt, CSRF-protected sessions), five deterministic assessment agents.
@@ -42,6 +43,7 @@ Manual pre-download (build time): `python scripts/prefetch_regions.py --scope IN
 - Whole-world road detail is tens of GB; it cannot live in git. Maps are downloaded on the server, not bundled.
 - Online search relies on public OpenStreetMap services (Overpass, OSRM, Nominatim, Open-Meteo), which can be slow or rate-limited. Results are mapped records only: opening status, capacity and safety are **not verified**.
 - Routing does not model live closures, hazard polygons, turn restrictions or vehicle profiles. Decision support only; always confirm with local emergency authorities.
+- Offline street tiles exist only for areas you opened while online on that device; elsewhere you get the basic offline map.
 - No live hazard feeds; severity is operator-entered.
 - This is a prototype, not a production identity service: see `SECURITY.md` before exposing it publicly.
 

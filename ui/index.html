@@ -648,7 +648,8 @@ async function findSafeZones(auto=false){
   out.textContent='Searching mapped shelters, assembly points and medical facilities, then ranking candidates by road distance where available…';
   list.innerHTML='';for(let i=0;i<3;i++)list.append(el('div','skeleton'));
   let j;
-  try{j=await api('/api/safezones?lat='+S.loc.lat+'&lon='+S.loc.lon+'&hazard='+encodeURIComponent($('kind').value)+'&mode='+S.mode+'&cc='+encodeURIComponent(S.cc),{},90000)}
+  const offlineOnly=!navigator.onLine;
+  try{j=await api('/api/safezones?lat='+S.loc.lat+'&lon='+S.loc.lon+'&hazard='+encodeURIComponent($('kind').value)+'&mode='+S.mode+'&cc='+encodeURIComponent(S.cc)+'&online='+(offlineOnly?'0':'1'),{},offlineOnly?20000:90000)}
   catch(e){if(tok!==zoneToken)return;list.innerHTML='';out.textContent='Could not calculate safer zones: '+e.message;btn.disabled=false;return}
   if(tok!==zoneToken)return;
   btn.disabled=false;list.innerHTML='';
@@ -661,7 +662,7 @@ async function findSafeZones(auto=false){
     const rb=el('button','btn alt sm','Retry search');rb.type='button';rb.onclick=()=>findSafeZones(false);list.append(rb);
     list.append(el('div','status','Emergency number: '+(j.emergency_number||'112')));return;
   }
-  out.textContent='Showing '+S.zones.length+' available mapped candidates'+(src.length?' from '+src.join(' + '):'')+'. Ordered by road distance when available. Capacity and opening status are not verified.';
+  out.textContent='Showing '+S.zones.length+' mapped candidates'+(offlineOnly?' using installed offline data only':'')+(src.length?' from '+src.join(' + '):'')+'. Ordered by calculated road distance when a road route exists. Capacity and opening status are not verified.';
   (j.notes||[]).forEach(n=>{const d=el('div','hint',n);d.style.marginTop='4px';out.append(d)});
   drawZones();S.zones.forEach((z,i)=>list.append(zoneCard(z,i)));
   selectZone(0,false);
@@ -914,7 +915,7 @@ api('/api/auth/me',{},8000).then(j=>{if(j.authenticated){csrf=j.csrf;$('authOpen
 /* ============================== NETWORK / RIGHT PANEL ============================== */
 function netState(){const on=navigator.onLine;$('netChip').className='chip '+(on?'ok':'warn');$('netLabel').textContent=on?'ONLINE':'OFFLINE · LOCAL DATA ONLY'}
 window.addEventListener('online',()=>{netState();if(!activeBase)setBase('Streets');toast('Back online · loading street map tiles','ok',2500)});
-window.addEventListener('offline',()=>{netState();toast('You are offline. Installed regional data and the offline world map keep working.','',6000)});
+window.addEventListener('offline',()=>{netState();setBase('');toast('Offline mode: remote tiles and network lookups are disabled. The local country map and installed regional roads remain available.','',6000)});
 netState();
 function rightToggle(){const small=matchMedia('(max-width:1240px) and (min-width:901px)').matches;$('toggleRight').style.display=small?'':'none'}
 bind('toggleRight','click',()=>$('shell').classList.toggle('show-right'));

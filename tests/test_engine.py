@@ -13,6 +13,15 @@ class EngineTests(unittest.TestCase):
    p=Path(d)/"x.synapsepack";save_package(sample(),p);self.assertEqual(load_package(p)["manifest"]["region_id"],"test")
  def test_route(self):
   r=shortest_path(sample(),0,0,0.01,0.01);self.assertEqual(r["status"],"CANDIDATE_ROUTE");self.assertEqual(len(r["coordinates"]),3)
+ def test_dijkstra_uses_stored_road_distance_not_geographic_heuristic(self):
+  p=sample()
+  # Deliberately include a direct edge whose stored cost is higher than the
+  # two-segment alternative; the returned route must minimise edge weights.
+  p["edges"].append({"from":"a","to":"c","distance_m":4000,"oneway":False,"way_id":"3","name":"Long bypass"})
+  r=shortest_path(p,0,0,0.01,0.01)
+  self.assertEqual(r["status"],"CANDIDATE_ROUTE")
+  self.assertEqual(r["distance_m"],2224)
+  self.assertEqual(r["road_names"],["A street","B street"])
  def test_route_respects_closed_way(self):
   p=sample();r=shortest_path(p,0,0,0.01,0.01,closed_way_ids=["2"])
   self.assertEqual(r["status"],"NO_CONNECTED_ROUTE")

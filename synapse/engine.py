@@ -122,10 +122,16 @@ def nearest_node(pkg,lat,lon):
     row,col=math.floor(lat/cell),math.floor(lon/cell)
     best=None;bd=float("inf");point={"lat":lat,"lon":lon}
     max_ring=max((abs(k[0]-row)+abs(k[1]-col) for k in grid),default=0)
+    # A query far outside the package could otherwise walk thousands of empty
+    # geographic cells. In that uncommon case, use one exact linear scan.
+    if max_ring>128:
+        for node in pkg["nodes"]:
+            d=haversine(point,node)
+            if d<bd:best,bd=node,d
     # Visit the closest grid cells first. Once the unvisited rectangle is
     # farther away than the best exact haversine distance, no unseen node
     # can improve the answer.
-    for ring in range(max_ring+1):
+    for ring in range(max_ring+1) if best is None else range(0):
         for dr in range(-ring,ring+1):
             dc=ring-abs(dr)
             cols=(col,) if dc==0 else (col-dc,col+dc)

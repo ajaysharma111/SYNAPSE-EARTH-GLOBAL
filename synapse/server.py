@@ -80,7 +80,14 @@ class App(BaseHTTPRequestHandler):
             try:
                 q=self.qs();lat,lon=self.latlon(q)
             except Exception:return self.sendj(400,{"error":"Valid lat and lon query parameters are required."})
-            res=online.safe_zones(self.installed_regions(lat,lon),lat,lon,q.get("hazard",["Flood"])[0],q.get("mode",["foot"])[0],use_online=q.get("online",["1"])[0]!="0")
+            # Offline requests are strictly local: never attempt Overpass, Nominatim, elevation or remote routing.
+            offline_only=q.get("online",["1"])[0]=="0"
+            regions=self.installed_regions(lat,lon)
+            try:
+                res=online.safe_zones(regions,lat,lon,q.get("hazard",["Flood"])[0],q.get("mode",["foot"])[0],use_online=not offline_only)
+            except Exception as e:
+                self.log_error("safe-zone search failed: %s",e)
+                return self.sendj(503,{"status":"SEARCH_ERROR","destinations":[],"error":"Safe-zone search failed locally. Check the server log and retry."})
             cc=q.get("cc",[""])[0];res["emergency_number"]=online.emergency_number(cc)
             return self.sendj(200,res)
         if path=="/api/emergency-number":return self.sendj(200,{"number":online.emergency_number(self.qs().get("cc",[""])[0])})

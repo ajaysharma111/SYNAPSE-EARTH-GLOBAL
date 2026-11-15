@@ -388,7 +388,7 @@ Object.entries(bases).forEach(([n,l])=>{
 map.on('baselayerchange',e=>{activeBase=e.layer;store.set('synapse.base2',e.name);tileOK=tileBad=0;updateTileChip()});
 function updateTileChip(){
   const c=$('tileChip'),l=$('tileLabel');
-  if(!activeBase){c.className='chip glass';l.textContent='OFFLINE VECTOR MAP';return}
+  if(!activeBase){c.className='chip glass warn';l.textContent='OFFLINE BASEMAP · LOCAL DATA';return}
   if(tileBad>=4&&tileOK===0){c.className='chip glass warn';l.textContent='TILES UNREACHABLE · OFFLINE VECTOR MAP';if(!updateTileChip.warned){updateTileChip.warned=1;toast('Online map tiles are unreachable. Showing the offline country map; routing and shelters from installed data still work.','',7000)}return}
   c.className='chip glass ok';l.textContent='ONLINE TILES';
 }

@@ -265,7 +265,7 @@ def route_online(lat, lon, dlat, dlon, mode="foot", fetch=fetch_json):
     last = None
     for tpl in ROUTERS.get(mode, ROUTERS["foot"]):
         try:
-            j = fetch(tpl.format(c=coords) + "?overview=simplified&geometries=geojson&steps=true", timeout=15)
+            j = fetch(tpl.format(c=coords) + "?overview=simplified&geometries=geojson&steps=true", timeout=7)
             if j.get("code") != "Ok" or not j.get("routes"):
                 last = j.get("code"); continue
             r = j["routes"][0]

@@ -114,8 +114,29 @@ def nearest_node(pkg,lat,lon):
 def shortest_path(pkg,start_lat,start_lon,end_lat,end_lon,closed_way_ids=None):
     if not pkg["nodes"] or not pkg["edges"]:
         return {"status":"NO_ROAD_DATA","message":"No road graph is installed for this region."}
+    # Reject invalid coordinates before snapping them to the graph.
+    try:
+        start_lat,start_lon=float(start_lat),float(start_lon)
+        end_lat,end_lon=float(end_lat),float(end_lon)
+    except (TypeError,ValueError):
+        return {"status":"INVALID_COORDINATES","message":"Start and destination must be valid latitude/longitude values."}
+    if not (-90<=start_lat<=90 and -180<=start_lon<=180 and
+            -90<=end_lat<=90 and -180<=end_lon<=180):
+        return {"status":"INVALID_COORDINATES","message":"Latitude must be between -90 and 90 and longitude between -180 and 180."}
     start,sd=nearest_node(pkg,start_lat,start_lon)
     end,ed=nearest_node(pkg,end_lat,end_lon)
+    # A route is not meaningful when either endpoint is snapped far away from
+    # the installed graph. Keep the distances in the response for diagnostics.
+    max_snap_m=1500
+    if sd>max_snap_m or ed>max_snap_m:
+        return {"status":"SNAP_TOO_FAR","snap_start_m":round(sd),"snap_end_m":round(ed),
+                "max_snap_m":max_snap_m,
+                "message":"A start or destination point is too far from the installed road graph. No offline road route was returned."}
+    # If both endpoints collapse onto one graph node, do not report a zero-metre
+    # road route for two distinct real-world locations.
+    if start["id"]==end["id"] and haversine({"lat":start_lat,"lon":start_lon},{"lat":end_lat,"lon":end_lon})>25:
+        return {"status":"SAME_NODE_SNAP","snap_start_m":round(sd),"snap_end_m":round(ed),
+                "message":"Both endpoints snap to the same road node but are distinct locations. The installed graph cannot provide a meaningful route between them."}
     adj,nodes=_graph_for(pkg)
     closed=set(str(x) for x in (closed_way_ids or []))
 

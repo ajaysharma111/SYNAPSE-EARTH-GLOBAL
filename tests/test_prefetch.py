@@ -76,3 +76,10 @@ class WideSearchTests(unittest.TestCase):
         near = online.offline_candidates([(pkg, {"region_id": "r"})], 0.0, 0.0, 30000)
         wide = online.offline_candidates([(pkg, {"region_id": "r"})], 0.0, 0.0, 120000)
         self.assertEqual(len(near), 0); self.assertEqual(len(wide), 1)
+
+class OrderTests(unittest.TestCase):
+    def test_home_country_first(self):
+        with tempfile.TemporaryDirectory() as d:
+            cat = catalog.get_catalog(d, fetch=lambda: INDEX)
+            ids = [i["region_id"] for i in prefetch.select(cat, "all", d, 300, first="IN")]
+            self.assertEqual(ids[-1], "europe-monaco"); self.assertEqual(len(ids), 3)

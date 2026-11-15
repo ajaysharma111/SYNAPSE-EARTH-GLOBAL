@@ -324,7 +324,7 @@ def main():
     p.add_argument("--data",default=env.get("SYNAPSE_DATA","./data"))
     p.add_argument("--host",default=env.get("HOST") or ("0.0.0.0" if env.get("PORT") else "127.0.0.1"))
     p.add_argument("--port",type=int,default=int(env.get("PORT","8080")))
-    p.add_argument("--prefetch",default=env.get("SYNAPSE_PREFETCH",""),help="all | IN,US | id:asia-india-western-zone  (downloaded once in the background)")
+    p.add_argument("--prefetch",default=env.get("SYNAPSE_PREFETCH","all"),help="all (default) | IN,US | id:asia-india-western-zone | off  (downloaded once in the background)")
     p.add_argument("--prefetch-max-mb",type=int,default=int(env.get("SYNAPSE_PREFETCH_MAX_MB","300")))
     a=p.parse_args()
     Path(a.data).mkdir(parents=True,exist_ok=True);App.data=a.data
@@ -333,6 +333,7 @@ def main():
     local=a.host in ("127.0.0.1","localhost","::1")
     App.allow_install=_truthy(env["SYNAPSE_ALLOW_INSTALL"]) if "SYNAPSE_ALLOW_INSTALL" in env else local
     App.persistent=_truthy(env.get("SYNAPSE_PERSISTENT","0"))
+    if a.prefetch.strip().lower() in ("off","none","0","no"):a.prefetch=""
     App.prefetch_scope=a.prefetch
     # Auto-activate checksum-validated packages generated into ./regions.
     package_dir=Path("./regions")

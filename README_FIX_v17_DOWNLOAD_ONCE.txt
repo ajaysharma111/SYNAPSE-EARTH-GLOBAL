@@ -28,3 +28,11 @@ v18 additions
 - On arrival, "Find next safer zone from here" searches again from that point (visited zones are skipped).
 - Service worker (ui/sw.js): app shell, vendor files, world map, region data and viewed map tiles keep working with no internet.
 - Online search is skipped (with a clear note) when the browser is offline.
+
+v19 additions
+- Ranking: every candidate gets cost = real travel time x safety factor (shelter 1.0, hospital 1.2, community building 1.3,
+  direct-line guesses x1.6, flood/cyclone high-ground bonus, earthquake prefers open assembly points). Cards show
+  "Best balance", "Shortest" and "Safest" badges.
+- Places found online are remembered on the device, so the same area still gives results with no internet at all.
+- Maps are installed automatically by default (SYNAPSE_PREFETCH=all, India first, 150 MB per-extract cap). Use
+  --prefetch off to disable. The page shows background progress; nobody has to press Install.

@@ -27,7 +27,7 @@ def record(data_dir, it):
     tmp = p.with_suffix(".tmp"); tmp.write_text(json.dumps(st)); tmp.replace(p)
 
 
-def select(catalog, scope, data_dir, max_mb):
+def select(catalog, scope, data_dir, max_mb, first=None):
     scope = (scope or "").strip()
     regions = catalog.get("regions", [])
     parents = {x.get("parent_id") for x in regions}
@@ -39,6 +39,8 @@ def select(catalog, scope, data_dir, max_mb):
         ids = {t[3:].lower() for t in toks if t.lower().startswith("id:")}
         ccs = {t.upper() for t in toks if not t.lower().startswith("id:")}
         chosen = [x for x in regions if x["id"] in ids] + [x for x in leaves if (x.get("country") or "").upper() in ccs and x["id"] not in ids]
+    first = [c.strip().upper() for c in (os.environ.get("SYNAPSE_PREFETCH_FIRST", "IN") if first is None else first).split(",") if c.strip()]
+    chosen = sorted(chosen, key=lambda x: (first.index((x.get("country") or "").upper()) if (x.get("country") or "").upper() in first else len(first)))
     st = read_state(data_dir).get("items", {})
     out = []
     for x in chosen:

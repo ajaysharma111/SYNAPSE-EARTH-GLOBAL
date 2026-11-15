@@ -748,7 +748,7 @@ function pickC(cands,hazard,userElev,elev){
     if((hazard==='Flood'||hazard==='Cyclone')&&gain!=null){if(gain>=5){sc*=.8;notes.push('higher ground (+'+gain+' m)')}else if(gain<=-5){sc*=1.6;notes.push('lower than you ('+gain+' m) — avoid for '+hazard.toLowerCase())}}
     c.notes=notes;c.score=Math.round(sc);c.tier_label=TIER_LABELS[c.tier];c.verification='Mapped record only: opening status, capacity, hazard exposure and safety are NOT verified.'});
   // v16 policy: never hide mapped alternatives behind category quotas; rank purely by score, then by distance
-  return cands.sort((a,b)=>a.score-b.score||a.straight_line_m-b.straight_line_m).slice(0,8);
+  return cands.sort((a,b)=>a.score-b.score||a.straight_line_m-b.straight_line_m).slice(0,12);
 }
 function bearingTxt(la1,lo1,la2,lo2){const p=Math.PI/180,y=Math.sin((lo2-lo1)*p)*Math.cos(la2*p),x=Math.cos(la1*p)*Math.sin(la2*p)-Math.sin(la1*p)*Math.cos(la2*p)*Math.cos((lo2-lo1)*p);const d=(Math.atan2(y,x)/p+360)%360;return ['N','NE','E','SE','S','SW','W','NW'][Math.floor((d+22.5)/45)%8]+' ('+Math.round(d)+'°)'}
 function stepText(s){const m=s.maneuver||{},t=m.type||'',mod=m.modifier||'',n=s.name||'the road';
@@ -771,12 +771,27 @@ function straightRoute(a,b,why){const d=Math.round(hav(a.lat,a.lon,b.lat,b.lon))
 async function routeAny(a,b,mode,signal){try{return await routeOnline(a,b,mode,signal)}catch(e){return straightRoute(a,b,e&&e.message)}}
 
 /* progressive search: quick small-radius pass first, widen only if needed; the whole thing is capped at 40 s */
+/* Remember every shelter/hospital found online on this device so the same area still works with no internet later. */
+const ZC={key:'synapse.zonecache.v1',max:900,
+  load(){try{return JSON.parse(localStorage.getItem(this.key)||'[]')}catch(e){return[]}},
+  add(list){try{const m=new Map(this.load().map(c=>[c.id,c]));list.forEach(c=>m.set(c.id,{id:c.id,name:c.name,tier:c.tier,kind:c.kind,lat:c.lat,lon:c.lon,t:Date.now()}));
+    let a=[...m.values()].sort((x,y)=>y.t-x.t).slice(0,this.max);localStorage.setItem(this.key,JSON.stringify(a))}catch(e){}},
+  near(lat,lon,r){return this.load().map(c=>({...c,straight_line_m:Math.round(hav(lat,lon,c.lat,c.lon))})).filter(c=>c.straight_line_m<=(c.tier==='shelter'?r:Math.min(r,Math.max(10000,r/3))))}
+};
+async function cachedDests(lat,lon,hazard,mode,r){
+  const c=pickC(ZC.near(lat,lon,r).map(x=>({...x,source:'saved on this device'})),hazard,null,{});
+  return c.map(x=>({...x,route:straightRoute({lat,lon},x,'offline')}));
+}
 async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
-  if(!navigator.onLine)return {ok:false,notes:['You are offline — showing installed offline map data only. Connect to the internet to also search OpenStreetMap.']};
+  if(!navigator.onLine){
+    let d=await cachedDests(lat,lon,hazard,mode,30000);if(!d.length)d=await cachedDests(lat,lon,hazard,mode,150000);
+    if(d.length&&tok===zoneToken)onUpdate({dests:d,notes:[],userElev:null,label:'saved'});
+    return {ok:d.length>0,notes:['You are offline — showing installed offline maps'+(d.length?' and places saved on this device from earlier online searches (direct-line distances).':'. Nothing is saved for this area yet; search once while online, or install a regional map.')]};
+  }
   const budget=new AbortController(),timer=setTimeout(()=>budget.abort(),48000),notes=[];
   const routed=new Map();let userElev=null,elev={},all=[];
   const emit=async(label)=>{
-    const cands=dedupeC(all);
+    ZC.add(all);const cands=dedupeC(all);
     if(!userElev&&(hazard==='Flood'||hazard==='Cyclone')&&cands.length){
       const ev=await fetchElevations([[lat,lon],...cands.slice(0,99).map(c=>[c.lat,c.lon])],budget.signal);
       if(ev){userElev=ev[0];cands.slice(0,99).forEach((c,i)=>{elev[c.id]=ev[i+1]})}}
@@ -802,16 +817,42 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
       try{const far=await overpassCandidates(lat,lon,80000,30000,25,budget.signal);const ids=new Set(all.map(c=>c.id));far.forEach(c=>{if(!ids.has(c.id))all.push(c)});if(all.length)notes.push('No shelter was found close to you, so the search was widened to about 80 km.');await emit('far')}
       catch(e){if(!all.length)notes.push('Wide-area shelter search failed: '+(e&&e.message))}
     }
+    if(!all.length&&tok===zoneToken){
+      let d=await cachedDests(lat,lon,hazard,mode,30000);if(!d.length)d=await cachedDests(lat,lon,hazard,mode,150000);
+      if(d.length){onUpdate({dests:d,notes:[],userElev:null,label:'saved'});notes.push('Live search failed, so these are places saved on this device from earlier searches (direct-line distances).');return {ok:true,notes}}
+    }
     return {ok:all.length>0,notes};
   }finally{clearTimeout(timer)}
 }
 
 /* ---- orchestration: installed offline data (instant) + online (progressive), merged ---- */
 let zoneToken=0;
+/* Composite cost = real travel time x safety factors. Lower is better.
+   Safety factors: shelter 1.0 < medical 1.2 < refuge 1.3; direct-line (unrouted) estimates are penalised; flood/cyclone
+   favour higher ground; earthquake favours open assembly points over buildings. */
+function rankCost(z,hazard){
+  const road=z.route&&z.route.status==='CANDIDATE_ROUTE';
+  let t=etaSeconds(z)*(road?1:1.6);
+  t*={shelter:1,medical:1.2,refuge:1.3}[z.tier]||1.3;
+  if((hazard==='Flood'||hazard==='Cyclone')&&z.elevation_gain_m!=null){if(z.elevation_gain_m>=5)t*=.8;else if(z.elevation_gain_m<=-5)t*=1.6}
+  if(hazard==='Earthquake'){if(z.tier==='shelter')t*=.9;else if(z.tier==='refuge')t*=1.15}
+  if(hazard==='Wildfire'||hazard==='Landslide'){if(z.tier==='medical')t*=1.1}
+  return t;
+}
 function mergeDests(off,on){
   const out=[];[...off,...on].forEach(d=>{if(!out.some(k=>k.tier===d.tier&&hav(k.lat,k.lon,d.lat,d.lon)<40))out.push(d)});
-  out.sort((a,b)=>(a.route.status!=='CANDIDATE_ROUTE')-(b.route.status!=='CANDIDATE_ROUTE')||(a.tier!=='shelter')-(b.tier!=='shelter')||a.score-b.score);
-  return out.filter(d=>!S.unavailable.has(d.id)&&!S.visited.has(d.id)).slice(0,8);
+  const hz=$('kind').value;
+  const res=out.filter(d=>!S.unavailable.has(d.id)&&!S.visited.has(d.id));
+  res.forEach(d=>{d.cost=rankCost(d,hz);d.badges=[]});
+  res.sort((a,b)=>a.cost-b.cost);
+  const top=res.slice(0,8);
+  if(top.length){
+    top[0].badges.push('★ Best balance');
+    const short=[...top].sort((a,b)=>etaSeconds(a)-etaSeconds(b))[0];if(short!==top[0]||top.length>1)short.badges.push('⚡ Shortest');
+    const sh=top.filter(d=>d.tier==='shelter');
+    if(sh.length){const safe=[...sh].sort((a,b)=>(b.elevation_gain_m||0)-(a.elevation_gain_m||0)||a.cost-b.cost)[0];safe.badges.push('🛡 Safest');}
+  }
+  return top;
 }
 async function findSafeZones(auto=false){
   const out=$('routeStatus'),list=$('zoneList'),btn=$('autoEvacuate');
@@ -882,6 +923,7 @@ function zoneCard(z,i){
   const tags=el('div');
   if(!road)tags.append(el('span','tag dash','No road route'));
   (z.notes||[]).forEach(n=>tags.append(el('span','tag '+(/higher/.test(n)?'up':'down'),n)));
+  (z.badges||[]).forEach(b=>tags.append(el('span','tag up',b)));
   tags.append(el('span','tag',z.source));mid.append(tags);
   c.append(mid);
   const d=el('div','zdist',fmtDist(r.distance_m||z.straight_line_m));d.append(el('small',null,road?'by road':'straight'));c.append(d);
@@ -1227,7 +1269,15 @@ async function loadConfig(){
     const c=await api('/api/config',{},8000);S.allowInstall=!!c.allow_install;
     if(!S.allowInstall){$('installTools').hidden=true;$('installNote').hidden=false;const ar=$('autoRegion');if(ar&&ar.parentElement)ar.parentElement.hidden=true;
       $('catalogStatus').textContent='Regional maps are pre-installed on the server.'}
+    if(c.prefetch_scope)watchPrefetch();
   }catch(e){}
+}
+let pfTimer=null;
+function watchPrefetch(){
+  const tick=async()=>{try{const j=await api('/api/regions/jobs',{},6000),it=j.items||[],done=it.filter(i=>i.status==='installed').length,left=it.filter(i=>['queued','running','downloading','importing'].includes(i.status)).length;
+    if(j.running||left){$('catalogStatus').textContent='Regional maps are being prepared automatically in the background: '+done+' ready, '+left+' still in progress. You do not need to install anything.'}
+    else if(pfTimer){clearInterval(pfTimer);pfTimer=null;refreshRegions().catch(()=>{});if(S.loc)findSafeZones(true).catch(()=>{})}}catch(e){}};
+  tick();pfTimer=setInterval(tick,8000);
 }
 (async()=>{
   await loadConfig();

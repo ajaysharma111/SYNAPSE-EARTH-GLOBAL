@@ -3,15 +3,19 @@ services:
     name: synapse-earth-global
     runtime: python
     plan: free
-    # Regional maps are downloaded ONCE, here at build time (not on visitors' page loads).
-    # Change --scope: "all" = every leaf extract under the size cap, or ISO codes e.g. "IN,PK,BD,NP,LK".
-    buildCommand: pip install -r requirements.txt && python scripts/prefetch_regions.py --scope IN --max-mb 300 --time-limit 1500
+    # Maps are installed automatically: at BUILD time (below) and again in the background when the server starts.
+    # Nobody has to press Install. India is fetched first (SYNAPSE_PREFETCH_FIRST), then every other country,
+    # skipping extracts bigger than SYNAPSE_PREFETCH_MAX_MB and anything already on disk.
+    buildCommand: pip install -r requirements.txt && python scripts/prefetch_regions.py --scope all --max-mb 150 --time-limit 1500
     startCommand: python -m synapse.server
     envVars:
+      - key: SYNAPSE_PREFETCH
+        value: all
+      - key: SYNAPSE_PREFETCH_FIRST
+        value: IN
+      - key: SYNAPSE_PREFETCH_MAX_MB
+        value: "150"
       - key: SYNAPSE_ALLOW_INSTALL   # visitors cannot trigger downloads
         value: "0"
-      - key: SYNAPSE_PERSISTENT
-        value: "0"
-# For ALL regions: use a paid plan + persistent disk, mount it at /var/data, set SYNAPSE_DATA=/var/data,
-# SYNAPSE_PERSISTENT=1 and SYNAPSE_PREFETCH=all. The server then downloads missing regions once in the
-# background and never re-downloads installed ones.
+# Free Render disk is wiped on each deploy, so very large worlds will not fit/persist. For permanent storage attach
+# a persistent disk at /var/data and set SYNAPSE_DATA=/var/data and SYNAPSE_PERSISTENT=1.

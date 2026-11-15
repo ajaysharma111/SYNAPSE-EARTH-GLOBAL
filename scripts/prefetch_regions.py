@@ -21,7 +21,7 @@ from synapse.installer import BatchInstaller
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--scope", default=os.environ.get("SYNAPSE_PREFETCH", ""), help="all | IN,US | id:<catalogue-id>[,..]")
+    ap.add_argument("--scope", default=os.environ.get("SYNAPSE_PREFETCH", "all"), help="all | IN,US | id:<catalogue-id>[,..]")
     ap.add_argument("--max-mb", type=int, default=int(os.environ.get("SYNAPSE_PREFETCH_MAX_MB", "300")), help="skip extracts larger than this (default 300)")
     ap.add_argument("--data", default=os.environ.get("SYNAPSE_DATA", "./data"))
     ap.add_argument("--time-limit", type=int, default=0, help="stop after this many seconds (0 = no limit)")

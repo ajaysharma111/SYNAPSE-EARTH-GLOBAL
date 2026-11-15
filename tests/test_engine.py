@@ -22,6 +22,19 @@ class EngineTests(unittest.TestCase):
   self.assertIs(a[0],b[0]);self.assertIs(a[1],b[1])
  def test_missing_route(self):
   p=sample();p["edges"]=[];self.assertEqual(shortest_path(p,0,0,0,0.01)["status"],"NO_ROAD_DATA")
+ def test_route_rejects_invalid_coordinates(self):
+  p=sample()
+  self.assertEqual(shortest_path(p,91,0,0,0.01)["status"],"INVALID_COORDINATES")
+  self.assertEqual(shortest_path(p,0,"not-a-number",0,0.01)["status"],"INVALID_COORDINATES")
+ def test_route_rejects_points_far_from_installed_graph(self):
+  p=sample()
+  r=shortest_path(p,0,0,1,1)
+  self.assertEqual(r["status"],"SNAP_TOO_FAR")
+  self.assertGreater(r["snap_end_m"],r["max_snap_m"])
+ def test_route_rejects_distinct_points_collapsed_to_same_node(self):
+  p=sample()
+  r=shortest_path(p,0,0,0,0.0002)
+  self.assertEqual(r["status"],"SAME_NODE_SNAP")
  def test_agents(self):
   a=run_agents(sample(),{"type":"Flood","severity":4});self.assertEqual(len(a["agents"]),5);self.assertTrue(a["summary"]["human_approval_required"])
  def test_corrupt_package(self):

@@ -160,3 +160,10 @@ must be downloaded individually and require internet during installation.
 - If no explicitly tagged shelter is found, or the road graph cannot connect to it, the app reports that limitation instead of inventing a route.
 - The worldwide catalogue lists Geofabrik extracts. It is not a preinstalled worldwide road database: download and install the needed country or smaller subregion while online. Smaller extracts are usually more practical.
 - Shelter data may be missing or stale. The app cannot verify whether a site is open, staffed, outside the hazard zone, or approved by emergency authorities. Confirm with official local responders.
+
+
+## Offline search and coverage diagnostics
+- The safer-zones panel includes **Force offline search**. When enabled, the browser sends `online=0`; the server searches only installed regional packages and does not contact Overpass, Nominatim, elevation or remote routing services.
+- The API distinguishes `NO_INSTALLED_REGION` (no package bounding box covers the current coordinates) from `REGION_INSTALLED_NO_FACILITIES` (a package covers the point but has no mapped candidate facilities).
+- A successful offline search still requires a suitable installed regional package with usable road graph and mapped facility records. The app does not manufacture shelters, roads or routes.
+- The world country-boundary layer is not a detailed street basemap. Full offline street rendering requires locally stored map data; this change improves offline search diagnostics but does not add raster/vector tile packs.

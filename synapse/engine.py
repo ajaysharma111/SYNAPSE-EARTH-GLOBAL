@@ -140,11 +140,10 @@ def nearest_node(pkg,lat,lon):
                     d=haversine(point,node)
                     if d<bd:best,bd=node,d
         south=(row-ring)*cell;north=(row+ring+1)*cell
-        west=(col-ring)*cell;east=(col+ring+1)*cell
         dy=max(south-lat,0.0,lat-north)*111195.0
-        # cos(latitude)<=1 makes this longitude bound conservative.
-        dx=max(west-lon,0.0,lon-east)*111195.0
-        if best is not None and math.hypot(dx,dy)>bd:break
+        # Use latitude-only pruning here. A longitude bound needs a careful
+        # spherical lower bound near the poles; omitting it keeps this exact.
+        if best is not None and dy>bd:break
     if best is None:raise ValueError("This region has no routable road nodes")
     if len(_SNAP_CACHE)>=256:_SNAP_CACHE.pop(next(iter(_SNAP_CACHE)))
     _SNAP_CACHE[key]=(pkg,best,bd)

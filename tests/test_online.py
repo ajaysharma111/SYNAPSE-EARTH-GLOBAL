@@ -75,6 +75,12 @@ class OrchestrationTests(unittest.TestCase):
         r=safe_zones([], 0, 0, "Wildfire", "foot", fetch=f)
         self.assertTrue(all(d["route"]["status"]=="STRAIGHT_LINE_ONLY" for d in r["destinations"]))
         self.assertIn("bearing", r["destinations"][0]["route"])
+    def test_offline_snap_failure_is_explained_in_fallback(self):
+        pkg=sample()
+        candidate={"lat":1.0,"lon":1.0,"_pkg":pkg}
+        route=online.route_one(candidate,0,0,"foot",fetch=broken_fetch,allow_online=False)
+        self.assertEqual(route["status"],"STRAIGHT_LINE_ONLY")
+        self.assertIn("too far from the installed road graph",route["warning"])
     def test_flood_penalises_lower_ground(self):
         c=[{"id":"a","tier":"shelter","straight_line_m":1000,"lat":0,"lon":0,"source":"x"},{"id":"b","tier":"shelter","straight_line_m":1200,"lat":0,"lon":0,"source":"x"}]
         out=pick(c,"Flood",user_elev=20,elev={"a":5,"b":60})

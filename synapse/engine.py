@@ -176,8 +176,15 @@ def shortest_path(pkg,start_lat,start_lon,end_lat,end_lon,closed_way_ids=None):
     # A* uses straight-line distance as an admissible lower-bound heuristic.
     # OSM edge lengths are physical road distances, so this never overestimates
     # the remaining path length and preserves shortest-path correctness.
+    # Cache heuristic values: A* may revisit the same node through several
+    # improved paths, and the destination is fixed for this search.
+    heuristic_cache={}
     def heuristic(node_id):
-        return haversine(nodes[node_id],end)
+        value=heuristic_cache.get(node_id)
+        if value is None:
+            value=haversine(nodes[node_id],end)
+            heuristic_cache[node_id]=value
+        return value
 
     q=[(heuristic(start["id"]),0.0,start["id"])]
     dist={start["id"]:0.0};prev={}

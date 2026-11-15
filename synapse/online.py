@@ -348,10 +348,23 @@ def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=f
         cands += on
     cands = dedupe(cands)
     if not cands:
-        return {"status": "NO_MAPPED_SAFE_ZONES", "destinations": [], "sources": status, "notes": notes,
-                "message": "No mapped shelters, assembly points, community buildings or medical facilities were found within range. "
-                           "SYNAPSE will not invent a safe destination. Install a regional map package, try again while online, "
-                           "or contact local emergency services."}
+        if not use_online and not regions:
+            message = ("OFFLINE COVERAGE MISSING: no installed regional map package covers this location. "
+                       "The offline search completed without contacting online services. Connect while online, "
+                       "download and install the correct local OSM region, then retry. No shelter or route has been invented.")
+            coverage = "NO_INSTALLED_REGION"
+        elif not use_online:
+            message = ("No mapped shelters, assembly points, community buildings or medical facilities were found "
+                       "in the installed offline package(s) covering this location. The offline search completed "
+                       "without contacting online services. No safe destination can be confirmed.")
+            coverage = "REGION_INSTALLED_NO_FACILITIES"
+        else:
+            message = ("No mapped shelters, assembly points, community buildings or medical facilities were found within range. "
+                       "SYNAPSE will not invent a safe destination. Install a regional map package, try again while online, "
+                       "or contact local emergency services.")
+            coverage = "SEARCH_NO_RESULTS"
+        return {"status": "NO_MAPPED_SAFE_ZONES", "destinations": [], "sources": status,
+                "notes": notes, "coverage_status": coverage, "message": message}
     # Keep every mapped candidate so the user can compare alternatives and report
     # a full/closed facility. This is deliberately not a claim that every facility is safe.
     pre = pick(cands, hazard)

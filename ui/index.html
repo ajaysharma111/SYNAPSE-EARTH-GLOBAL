@@ -388,7 +388,7 @@ const bases={
   'Streets':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:attrOSM}),
   'Esri streets':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:attrEsri}),
   'Satellite':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles © Esri — Esri, Maxar, Earthstar Geographics'}),
-  'Dark gray':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,attribution:attrEsri}),
+  'Dark gray':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:16,attribution:attrEsri}),
 };
 const countryLayer=L.layerGroup().addTo(map);       // offline country boundaries (always works)
 const roadLayer=L.layerGroup().addTo(map);          // installed regional roads + settlements
@@ -419,6 +419,10 @@ function updateTileChip(){
 let savedBase=store.get('synapse.base2',null);
 if(typeof savedBase!=='string'||!savedBase.trim()||!bases[savedBase])savedBase=null;
 setBase(navigator.onLine?(savedBase||'Streets'):'');
+/* keep Leaflet's idea of the container size in sync (otherwise tiles only cover the old size and the rest of the map goes blank) */
+try{const mo=new ResizeObserver(()=>map.invalidateSize({animate:false}));mo.observe($('map'))}catch(e){}
+window.addEventListener('resize',()=>map.invalidateSize({animate:false}));
+setTimeout(()=>map.invalidateSize({animate:false}),400);setTimeout(()=>map.invalidateSize({animate:false}),1800);
 
 
 /* ---- world countries (offline GeoJSON) ---- */
@@ -714,7 +718,7 @@ function classify(t){
 }
 function overpassQ(lat,lon,rs,ro,to){
   const a=`(around:${rs},${lat.toFixed(6)},${lon.toFixed(6)})`,b=`(around:${ro},${lat.toFixed(6)},${lon.toFixed(6)})`;
-  return `[out:json][timeout:${to}];(nwr${a}["emergency"~"^(assembly_point|shelter|emergency_shelter)$"];nwr${a}["amenity"~"^(evacuation_centre|evacuation_center)$"];nwr${a}["amenity"="shelter"]["shelter_type"!~"^(picnic_shelter|weather_shelter|public_transport|basic_hut|lean_to|gazebo|rock_shelter)$"]["public_transport"!~"."]["highway"!~"."];)->.s;(nwr${b}["amenity"~"^(hospital|clinic)$"];nwr${b}["amenity"~"^(community_centre|townhall|fire_station)$"];)->.o;.s out tags center 120;.o out tags center 120;`;
+  return `[out:json][timeout:${to}];(nwr${a}["emergency"~"^(assembly_point|shelter|emergency_shelter)$"];nwr${a}["amenity"~"^(evacuation_centre|evacuation_center)$"];nwr${a}["amenity"="shelter"]["shelter_type"!~"^(picnic_shelter|weather_shelter|public_transport|basic_hut|lean_to|gazebo|rock_shelter)$"]["public_transport"!~"."]["highway"!~"."];)->.s;(nwr${b}["amenity"~"^(hospital|clinic)$"];nwr${b}["healthcare"~"^(hospital|clinic)$"];nwr${b}["amenity"~"^(community_centre|townhall|fire_station)$"];)->.o;.s out tags center 120;.o out tags center 120;`;
 }
 async function overpassCandidates(lat,lon,rs,ro,to,signal){
   const q=overpassQ(lat,lon,rs,ro,to);
@@ -748,7 +752,7 @@ function pickC(cands,hazard,userElev,elev){
     if((hazard==='Flood'||hazard==='Cyclone')&&gain!=null){if(gain>=5){sc*=.8;notes.push('higher ground (+'+gain+' m)')}else if(gain<=-5){sc*=1.6;notes.push('lower than you ('+gain+' m) — avoid for '+hazard.toLowerCase())}}
     c.notes=notes;c.score=Math.round(sc);c.tier_label=TIER_LABELS[c.tier];c.verification='Mapped record only: opening status, capacity, hazard exposure and safety are NOT verified.'});
   // v16 policy: never hide mapped alternatives behind category quotas; rank purely by score, then by distance
-  return cands.sort((a,b)=>a.score-b.score||a.straight_line_m-b.straight_line_m).slice(0,12);
+  return cands.sort((a,b)=>a.score-b.score||a.straight_line_m-b.straight_line_m).slice(0,40);
 }
 function bearingTxt(la1,lo1,la2,lo2){const p=Math.PI/180,y=Math.sin((lo2-lo1)*p)*Math.cos(la2*p),x=Math.cos(la1*p)*Math.sin(la2*p)-Math.sin(la1*p)*Math.cos(la2*p)*Math.cos((lo2-lo1)*p);const d=(Math.atan2(y,x)/p+360)%360;return ['N','NE','E','SE','S','SW','W','NW'][Math.floor((d+22.5)/45)%8]+' ('+Math.round(d)+'°)'}
 function stepText(s){const m=s.maneuver||{},t=m.type||'',mod=m.modifier||'',n=s.name||'the road';
@@ -796,20 +800,20 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
       const ev=await fetchElevations([[lat,lon],...cands.slice(0,99).map(c=>[c.lat,c.lon])],budget.signal);
       if(ev){userElev=ev[0];cands.slice(0,99).forEach((c,i)=>{elev[c.id]=ev[i+1]})}}
     const chosen=pickC(cands,hazard,userElev,elev);
-    await Promise.all(chosen.map(async c=>{const k=c.id+'|'+mode;if(!routed.has(k))routed.set(k,routeAny({lat,lon},c,mode,budget.signal));c.route=await routed.get(k)}));
+    await Promise.all(chosen.map(async(c,i)=>{const k=c.id+'|'+mode;if(i<14&&!routed.has(k))routed.set(k,routeAny({lat,lon},c,mode,budget.signal));c.route=routed.has(k)?await routed.get(k):straightRoute({lat,lon},c,'not routed yet')}));
     if(tok!==zoneToken)return;
     onUpdate({dests:chosen,notes:[...notes],userElev,label});
   };
   try{
     let phaseA=null,usedFallback=false;
-    try{phaseA=await overpassCandidates(lat,lon,6000,3000,10,budget.signal)}
+    try{phaseA=await overpassCandidates(lat,lon,8000,6000,12,budget.signal)}
     catch(e){
       try{phaseA=await nominatimCandidates(lat,lon,budget.signal);usedFallback=true;notes.push('Main OpenStreetMap shelter service was unreachable, so results come from a slower fallback search and may be less complete.')}
       catch(e2){notes.push('Online shelter search failed: '+(e&&e.message)+' | fallback: '+(e2&&e2.message))}
     }
     if(phaseA){all=phaseA;await emit('nearby')}
-    if(!usedFallback&&phaseA!==null&&(tok===zoneToken)&&dedupeC(all).filter(c=>c.tier==='shelter').length<2){
-      try{const wide=await overpassCandidates(lat,lon,25000,8000,20,budget.signal);const ids=new Set(all.map(c=>c.id));wide.forEach(c=>{if(!ids.has(c.id))all.push(c)});await emit('wide')}
+    if(!usedFallback&&phaseA!==null&&(tok===zoneToken)){
+      try{const wide=await overpassCandidates(lat,lon,25000,12000,25,budget.signal);const ids=new Set(all.map(c=>c.id));wide.forEach(c=>{if(!ids.has(c.id))all.push(c)});await emit('wide')}
       catch(e){if(!all.length)notes.push('Wider shelter search failed: '+(e&&e.message))}
     }
     const nearShelter=()=>dedupeC(all).some(c=>c.tier==='shelter'&&hav(lat,lon,c.lat,c.lon)<10000);
@@ -845,9 +849,9 @@ function mergeDests(off,on){
   const res=out.filter(d=>!S.unavailable.has(d.id)&&!S.visited.has(d.id));
   res.forEach(d=>{d.cost=rankCost(d,hz);d.badges=[]});
   res.sort((a,b)=>a.cost-b.cost);
-  const top=res.slice(0,8);
+  const top=res.slice(0,30);
   if(top.length){
-    top[0].badges.push('★ Best balance');
+    if(!top.length)return top;top[0].badges.push('★ Best balance');
     const short=[...top].sort((a,b)=>etaSeconds(a)-etaSeconds(b))[0];if(short!==top[0]||top.length>1)short.badges.push('⚡ Shortest');
     const sh=top.filter(d=>d.tier==='shelter');
     if(sh.length){const safe=[...sh].sort((a,b)=>(b.elevation_gain_m||0)-(a.elevation_gain_m||0)||a.cost-b.cost)[0];safe.badges.push('🛡 Safest');}
@@ -909,7 +913,7 @@ function drawZones(){
     L.polyline(pts,{pane:'zones',color:'#ffffff',weight:11,opacity:1,lineCap:'round',lineJoin:'round',interactive:false}).addTo(zoneLayer);
     L.polyline(pts,{pane:'zones',color:road?'#1a73e8':'#e8710a',weight:6,opacity:1,lineCap:'round',lineJoin:'round',dashArray:road?null:'1 11',interactive:false}).addTo(zoneLayer);
     if(pts.length>1)L.marker(midpoint(pts),{pane:'bubble',interactive:false,keyboard:false,icon:L.divIcon({className:'',html:'<div class="etabub">'+fmtDur(etaSeconds(s))+'</div>',iconSize:[0,0]})}).addTo(zoneLayer)}
-  S.zones.forEach((z,i)=>L.marker([z.lat,z.lon],{pane:'zones',icon:zoneIcon(z,i,i===S.sel),zIndexOffset:i===S.sel?500:0,keyboard:false}).on('click',()=>selectZone(i,true)).bindTooltip(z.name,{permanent:true,direction:'right',offset:[18,-16],className:'zlabel t-'+z.tier}).addTo(zoneLayer));
+  S.zones.forEach((z,i)=>L.marker([z.lat,z.lon],{pane:'zones',icon:zoneIcon(z,i,i===S.sel),zIndexOffset:i===S.sel?500:0,keyboard:false}).on('click',()=>selectZone(i,true)).bindTooltip(z.name,{permanent:(i<8||i===S.sel),direction:'right',offset:[18,-16],className:'zlabel t-'+z.tier}).addTo(zoneLayer));
 }
 function etaSeconds(z){const r=z.route;return r.duration_s||(r.distance_m/(S.mode==='foot'?1.25:8.3))}
 function zoneCard(z,i){
@@ -940,6 +944,8 @@ function selectZone(i,fly){
     if(on)c.append(zoneDetail(z));
   });
   drawZones();
+  if(z.route.status!=='CANDIDATE_ROUTE'&&navigator.onLine&&S.loc&&!z._lt){z._lt=1;
+    routeAny({lat:S.loc.lat,lon:S.loc.lon},z,S.mode).then(r=>{if(r.status==='CANDIDATE_ROUTE'){z.route=r;if(S.zones[S.sel]===z){const l=document.querySelector('#zoneList .zone[data-i="'+S.sel+'"]');selectZone(S.sel,true)}}}).catch(()=>{})}
   const sc=document.querySelector('#zoneList .zone[aria-selected=true]');if(sc&&fly)sc.scrollIntoView({block:'nearest',behavior:'smooth'});
   if(fly){const ll=z.route.coordinates.map(c=>[c[1],c[0]]);try{map.flyToBounds(L.latLngBounds(ll),{padding:[70,70],maxZoom:17,duration:.7})}catch(e){}}
   $('infoTitle').textContent=(i+1)+'. '+z.name;

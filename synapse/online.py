@@ -348,7 +348,7 @@ def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=f
                            "or contact local emergency services."}
     # Keep every mapped candidate so the user can compare alternatives and report
     # a full/closed facility. This is deliberately not a claim that every facility is safe.
-    pre = pick(cands, hazard)
+    pre = pick(cands, hazard)[:40]
     elev = {}
     user_elev = None
     if use_online and status["online_data"] and hazard in HIGH_GROUND_HAZARDS:
@@ -357,7 +357,7 @@ def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=f
         if ev:
             user_elev = ev[0]
             elev = {c["id"]: ev[i + 1] for i, c in enumerate(cands[:99])}
-            pre = pick(cands, hazard, user_elev, elev)
+            pre = pick(cands, hazard, user_elev, elev)[:40]
         else:
             notes.append("Elevation data unavailable; high-ground ranking skipped.")
     with ThreadPoolExecutor(max_workers=6) as ex:

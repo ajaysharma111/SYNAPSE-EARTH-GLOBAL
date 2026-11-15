@@ -6,7 +6,7 @@ self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.
 async function trim(cache){const ks=await cache.keys();if(ks.length>MAX_TILES)for(const k of ks.slice(0,ks.length-MAX_TILES))await cache.delete(k)}
 async function netFirst(req,name){const c=await caches.open(name);try{const r=await fetch(req);if(r&&r.ok)c.put(req,r.clone());return r}catch(e){const h=await c.match(req,{ignoreSearch:false});if(h)return h;throw e}}
 async function swr(req,name){const c=await caches.open(name),h=await c.match(req);const p=fetch(req).then(r=>{if(r&&r.ok)c.put(req,r.clone());return r}).catch(()=>null);return h||(await p)||new Response('{"error":"offline"}',{status:503,headers:{'Content-Type':'application/json'}})}
-async function cacheFirst(req,name,limit){const c=await caches.open(name),h=await c.match(req);if(h)return h;try{const r=await fetch(req);if(r&&(r.ok||r.type==='opaque')){c.put(req,r.clone());if(limit)trim(c)}return r}catch(e){return new Response('',{status:504})}}
+async function cacheFirst(req,name,limit){const c=await caches.open(name),h=await c.match(req);if(h)return h;try{const r=await fetch(req);if(r&&(r.ok||r.type==='opaque')){c.put(req,r.clone());if(limit)trim(c)}return r}catch(e){throw e}}
 self.addEventListener('fetch',e=>{
   const r=e.request;if(r.method!=='GET')return;const u=new URL(r.url);
   if(u.origin===location.origin){

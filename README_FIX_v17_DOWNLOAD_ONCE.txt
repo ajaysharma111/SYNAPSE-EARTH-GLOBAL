@@ -36,3 +36,7 @@ v19 additions
 - Places found online are remembered on the device, so the same area still gives results with no internet at all.
 - Maps are installed automatically by default (SYNAPSE_PREFETCH=all, India first, 150 MB per-extract cap). Use
   --prefetch off to disable. The page shows background progress; nobody has to press Install.
+
+v20 additions
+- Map no longer goes blank after zooming/resizing: Leaflet is re-synced to its container (ResizeObserver), the Dark gray layer over-zooms instead of vanishing, and the service worker no longer turns failed tile loads into broken responses.
+- Many more safer zones: first search radius 8 km/6 km, a 25 km/12 km pass always runs, up to 30 candidates are listed (top 14 routed immediately, the rest routed when tapped), hospitals tagged healthcare=* are included.

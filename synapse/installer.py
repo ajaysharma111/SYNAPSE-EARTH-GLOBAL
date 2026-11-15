@@ -71,7 +71,8 @@ def install_one(item, data_dir, max_bytes=3_000_000_000, progress=None, cancelle
 
 
 class BatchInstaller:
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, on_item=None):
+        self.on_item = on_item
         self.data = str(data_dir); self.lock = threading.Lock(); self._cancel = False
         self.state = {"running": False, "items": [], "started": None, "finished": None}
 
@@ -100,6 +101,11 @@ class BatchInstaller:
     def _set(self, it, **kw):
         with self.lock:
             it.update(kw)
+        if self.on_item and it.get("status") in ("installed", "failed", "skipped") and kw.get("status"):
+            try:
+                self.on_item(dict(it))
+            except Exception:  # noqa: BLE001
+                pass
 
     def _run(self, max_bytes, skip_installed):
         try:

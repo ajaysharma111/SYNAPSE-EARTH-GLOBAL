@@ -12,3 +12,10 @@ data/*.sqlite3
 data/*.sqlite3-*
 
 .venv_old/
+
+# v17: downloaded regional maps are build/runtime artifacts, not source
+data/*.json
+!data/world_countries.geojson
+data/*.manifest
+data/*.synapsepack
+data/prefetch_state.json

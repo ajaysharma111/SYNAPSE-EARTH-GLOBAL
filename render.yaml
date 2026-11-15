@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: synapse-earth-global
+    runtime: python
+    plan: free
+    # Regional maps are downloaded ONCE, here at build time (not on visitors' page loads).
+    # Change --scope: "all" = every leaf extract under the size cap, or ISO codes e.g. "IN,PK,BD,NP,LK".
+    buildCommand: pip install -r requirements.txt && python scripts/prefetch_regions.py --scope IN --max-mb 300 --time-limit 1500
+    startCommand: python -m synapse.server
+    envVars:
+      - key: SYNAPSE_ALLOW_INSTALL   # visitors cannot trigger downloads
+        value: "0"
+      - key: SYNAPSE_PERSISTENT
+        value: "0"
+# For ALL regions: use a paid plan + persistent disk, mount it at /var/data, set SYNAPSE_DATA=/var/data,
+# SYNAPSE_PERSISTENT=1 and SYNAPSE_PREFETCH=all. The server then downloads missing regions once in the
+# background and never re-downloads installed ones.

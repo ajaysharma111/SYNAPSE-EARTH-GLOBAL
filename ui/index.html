@@ -153,6 +153,19 @@ label.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.8px;color
 .zm.sel{width:36px;height:36px;box-shadow:0 0 0 4px #46ddc655,0 4px 14px #000a}
 .country-tip{font-weight:700}
 .zlabel{background:#fff!important;color:#1b2733!important;border:0!important;box-shadow:0 2px 8px #0006!important;font:700 11px var(--font)!important;padding:3px 8px!important;max-width:170px;overflow:hidden;text-overflow:ellipsis;border-left:4px solid var(--tc)!important}.zlabel:before{display:none!important}
+.dir-actions{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+.nav-banner{left:12px;right:64px;top:12px;display:flex;gap:14px;align-items:center;padding:12px 16px;border-radius:14px;background:#0b57d0;color:#fff;box-shadow:0 10px 30px #0009}
+.nav-banner[hidden],.nav-panel[hidden],#navNext[hidden]{display:none!important}
+.nav-arrow{font-size:34px;line-height:1;width:44px;text-align:center}
+.nav-txt strong{display:block;font-size:24px;line-height:1.1}.nav-txt span{display:block;font-size:14px;opacity:.95;margin-top:2px}
+.nav-panel{left:12px;right:64px;bottom:26px;padding:12px 14px;max-width:560px}
+.nav-main{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.nav-rem{font:800 26px var(--font);color:#7fd0ff}.nav-sub{font-size:12px;color:#b9cdd9;margin-top:2px}
+.nav-btns{display:flex;gap:7px}
+.nav-bar{height:6px;border-radius:99px;background:#06121c;margin-top:9px;overflow:hidden;border:1px solid var(--line2)}.nav-bar div{height:100%;width:0;background:linear-gradient(90deg,#1a73e8,#46ddc6);transition:width .5s}
+.nav-dest{margin-top:7px;font-size:11px;color:var(--muted)}
+.map-nav .toasts{top:104px}
+.map-nav .map-top,.map-nav .map-info,.map-nav .legend{display:none!important}
 .etabub{width:max-content;transform:translate(-50%,-135%);background:#fff;color:#1b2733;font:700 12px var(--font);padding:4px 9px;border-radius:99px;box-shadow:0 3px 10px #0007;white-space:nowrap;border:1px solid #cfd8de}
 .dir-eta{display:flex;align-items:baseline;gap:8px;margin-top:6px}.dir-eta strong{font-size:22px;color:#7fd0ff}.dir-eta span{color:#b9cdd9;font-size:12px}
 .dir-steps{margin:8px 0 0;padding-left:20px;max-height:170px;overflow:auto;font-size:11px;color:#d4e3ec}.dir-steps li{margin:3px 0}
@@ -248,7 +261,8 @@ label.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.8px;color
     <label class="lbl" for="region">Installed regional package</label>
     <select id="region"><option value="">No regional package selected</option></select>
     <p id="coverage" class="hint" style="margin:7px 0 0">The world map and country boundaries work offline. Road, shelter and settlement detail comes from regional packages.</p>
-    <label class="lbl" for="catalogSearch">Download a region for offline use</label>
+    <div id="installNote" class="hint" hidden style="margin-top:10px">Regional maps are installed once by the site operator and stored on the server, so nothing is downloaded when you visit. Only the roads for the area on your screen are sent to your browser.</div>
+    <div id="installTools"><label class="lbl" for="catalogSearch">Download a region for offline use</label>
     <input id="catalogSearch" type="search" placeholder="Search country, state or province…">
     <select id="catalogRegion" style="margin-top:7px" aria-label="Catalogue region"><option value="">Load the catalogue while online…</option></select>
     <div class="row" style="margin-top:7px"><button class="btn alt sm" id="catalogLoad" type="button">Browse catalogue</button><button class="btn alt sm" id="catalogInstall" type="button">Install selected</button></div>
@@ -261,6 +275,7 @@ label.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.8px;color
     <div id="bulkInfo" class="hint" style="margin-top:7px">Runs on the server one extract at a time, skips ones already installed or over the size limit, and keeps going if one fails.</div>
     <div id="bulkBar" style="height:6px;border-radius:99px;background:#06121c;border:1px solid var(--line2);margin-top:7px;overflow:hidden" hidden><div id="bulkFill" style="height:100%;width:0;background:linear-gradient(90deg,#0ca598,#46ddc6);transition:width .4s"></div></div>
     <div id="bulkList" class="list" style="margin-top:7px"></div>
+    </div>
     <label class="lbl" for="placeSearch">Search installed settlements</label>
     <input id="placeSearch" placeholder="City, town, village…">
     <div id="places" class="hint" style="margin-top:6px"></div>
@@ -276,7 +291,15 @@ label.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.8px;color
     <span class="chip glass" id="tileChip"><span class="dot"></span><span id="tileLabel">MAP</span></span>
   </div>
   <div class="mapui toasts" id="toasts" aria-live="polite"></div>
-  <div class="mapui glass map-info"><b id="infoTitle">World overview</b><small id="infoSub">Click a country to inspect it, or detect your location to find safer zones.</small><div id="infoEta" class="dir-eta" hidden></div><button class="btn alt sm" id="infoStepsBtn" type="button" hidden style="margin-top:8px">Show directions</button><ol id="infoSteps" class="dir-steps" hidden></ol></div>
+  <div class="mapui nav-banner" id="navBanner" hidden role="status" aria-live="polite"><div class="nav-arrow" id="navArrow">↑</div><div class="nav-txt"><strong id="navDist">—</strong><span id="navText">Starting…</span></div></div>
+  <div class="mapui glass nav-panel" id="navPanel" hidden>
+    <div class="nav-main"><div><div class="nav-rem" id="navRem">—</div><div class="nav-sub" id="navSub">—</div></div>
+      <div class="nav-btns"><button class="btn alt sm" id="navVoice" type="button" aria-pressed="true" title="Voice guidance">🔊</button><button class="btn warn sm" id="navEnd" type="button">End</button></div></div>
+    <div class="nav-bar"><div id="navFill"></div></div>
+    <div class="nav-dest" id="navDest"></div>
+    <button class="btn sm" id="navNext" type="button" hidden style="margin-top:8px;width:100%">Find next safer zone from here</button>
+  </div>
+  <div class="mapui glass map-info"><b id="infoTitle">World overview</b><small id="infoSub">Click a country to inspect it, or detect your location to find safer zones.</small><div id="infoEta" class="dir-eta" hidden></div><div class="dir-actions"><button class="btn sm" id="navStart" type="button" hidden>▶ Start</button><button class="btn alt sm" id="infoStepsBtn" type="button" hidden>Show directions</button></div><ol id="infoSteps" class="dir-steps" hidden></ol></div>
   <div class="mapui map-btns">
     <button class="btn alt" id="btnMe" type="button" title="Centre on my location" aria-label="Centre on my location">◎</button>
     <button class="btn alt" id="btnWorld" type="button" title="Whole world" aria-label="Show whole world">🌍</button>
@@ -352,7 +375,7 @@ async function api(url,opts={},timeout=30000){
 }
 const fmtDist=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+' km':Math.round(m)+' m';
 const fmtDur=s=>{const m=Math.max(1,Math.round(s/60));return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min'};
-const S={loc:null,pkg:null,nodes:null,zones:[],unavailable:new Set(),sel:-1,mode:'foot',countries:[],cc:'',pick:false,detectId:0,busy:false};
+const S={loc:null,pkg:null,nodes:null,zones:[],unavailable:new Set(),visited:new Set(),sel:-1,mode:'foot',countries:[],cc:'',pick:false,detectId:0,busy:false};
 
 /* ============================== MAP ============================== */
 const map=L.map('map',{worldCopyJump:true,minZoom:2,maxZoom:19,zoomControl:false,zoomSnap:.5,preferCanvas:true,attributionControl:true}).setView([20,10],2);
@@ -418,7 +441,7 @@ async function loadWorld(){
 function selectCountry(f,fly=true){
   selLayer.clearLayers();if(!f)return;
   const g=L.geoJSON(f,{interactive:false,style:{color:'#46ddc6',weight:2,fillColor:'#46ddc6',fillOpacity:.14}}).addTo(selLayer);
-  $('infoEta').hidden=true;$('infoStepsBtn').hidden=true;$('infoSteps').hidden=true;
+  $('infoEta').hidden=true;$('navStart').hidden=true;$('infoStepsBtn').hidden=true;$('infoSteps').hidden=true;
   $('infoTitle').textContent=nm(f);
   $('infoSub').textContent=[f.properties.CONTINENT,f.properties.SUBREGION].filter(Boolean).join(' · ')+' · Detect your location for local shelter detail.';
   const iso=f.properties.ISO_A2&&f.properties.ISO_A2!=='-99'?f.properties.ISO_A2:'';
@@ -445,21 +468,26 @@ function setPick(on){S.pick=on;$('map').classList.toggle('picking',on);$('pickOn
 bind('pickOnMap','click',()=>setPick(!S.pick));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){setPick(false);$('authPanel').classList.remove('open')}});
 bind('btnWorld','click',()=>map.flyTo([20,10],2,{duration:.8}));
-bind('btnMe','click',()=>{if(S.loc)map.flyTo([S.loc.lat,S.loc.lon],Math.max(map.getZoom(),13),{duration:.8});else toast('No location yet. Press “Detect my location”.')});
+bind('btnMe','click',()=>{if(NAV.on){NAV.follow=true;if(S.loc)map.setView([S.loc.lat,S.loc.lon],Math.max(map.getZoom(),17));return}if(S.loc)map.flyTo([S.loc.lat,S.loc.lon],Math.max(map.getZoom(),13),{duration:.8});else toast('No location yet. Press “Detect my location”.')});
 
 /* ---- installed roads / places overlay ---- */
-let roadTimer=null;
-function scheduleRoads(){clearTimeout(roadTimer);roadTimer=setTimeout(drawRoads,180)}
-function drawRoads(){
+let roadTimer=null,roadToken=0;const roadCache=new Map();
+function scheduleRoads(){clearTimeout(roadTimer);roadTimer=setTimeout(drawRoads,220)}
+/* Only the roads/places inside the visible box are requested (never the whole regional package) and boxes are cached. */
+async function drawRoads(){
+  const tok=++roadToken;
+  if(!S.pkg||!map.hasLayer(roadLayer)||map.getZoom()<12){roadLayer.clearLayers();return}
+  const b=map.getBounds().pad(.15),g=.04,rid=S.pkg.manifest.region_id;
+  const w=Math.floor(b.getWest()/g)*g,so=Math.floor(b.getSouth()/g)*g,e=Math.ceil(b.getEast()/g)*g,n=Math.ceil(b.getNorth()/g)*g;
+  if(e-w>.6||n-so>.6)return;
+  const key=[rid,w.toFixed(2),so.toFixed(2),e.toFixed(2),n.toFixed(2)].join('|');
+  let d=roadCache.get(key);
+  if(!d){try{d=await api('/api/region-roads/'+encodeURIComponent(rid)+'?bbox='+[w,so,e,n].map(x=>x.toFixed(3)).join(',')+'&max=9000',{},25000)}catch(err){return}
+    roadCache.set(key,d);if(roadCache.size>24)roadCache.delete(roadCache.keys().next().value)}
+  if(tok!==roadToken)return;
   roadLayer.clearLayers();
-  if(!S.pkg||!map.hasLayer(roadLayer)||map.getZoom()<11)return;
-  const b=map.getBounds().pad(.15),lines=[];
-  for(const e of S.pkg.edges){const a=S.nodes[e.from],c=S.nodes[e.to];if(!a||!c)continue;
-    if(!b.contains([a.lat,a.lon])&&!b.contains([c.lat,c.lon]))continue;
-    lines.push([[a.lat,a.lon],[c.lat,c.lon]]);if(lines.length>14000)break}
-  if(lines.length)L.polyline(lines,{color:'#e9ad5b',weight:1.3,opacity:.65,interactive:false}).addTo(roadLayer);
-  if(map.getZoom()>=10){let n=0;for(const p of S.pkg.places||[]){if(!b.contains([p.lat,p.lon]))continue;
-    L.circleMarker([p.lat,p.lon],{radius:p.place_type==='city'?5:3,color:'#0a1a27',weight:1,fillColor:'#72e5d0',fillOpacity:.95}).bindTooltip(p.name+' · '+p.place_type).addTo(roadLayer);if(++n>300)break}}
+  if(d.lines.length)L.polyline(d.lines.map(l=>[[l[0],l[1]],[l[2],l[3]]]),{color:'#e9ad5b',weight:1.3,opacity:.65,interactive:false}).addTo(roadLayer);
+  (d.places||[]).forEach(p=>L.circleMarker([p.lat,p.lon],{radius:p.place_type==='city'?5:3,color:'#0a1a27',weight:1,fillColor:'#72e5d0',fillOpacity:.95}).bindTooltip(p.name+' · '+p.place_type).addTo(roadLayer));
 }
 map.on('moveend',scheduleRoads);map.on('overlayadd overlayremove',scheduleRoads);
 
@@ -518,22 +546,25 @@ async function detect(){
     return ipLocate(true);
   }
 }
+const IPSERVICES=[['https://ipwho.is/',j=>j.success===false?null:{lat:j.latitude,lon:j.longitude,city:j.city,region:j.region,country:j.country,cc:j.country_code}],
+  ['https://ipapi.co/json/',j=>({lat:j.latitude,lon:j.longitude,city:j.city,region:j.region,country:j.country_name,cc:j.country_code})],
+  ['https://get.geojs.io/v1/ip/geo.json',j=>({lat:+j.latitude,lon:+j.longitude,city:j.city,region:j.region,country:j.country,cc:j.country_code})]];
 async function ipLocate(auto=false){
   if(S.busy&&!auto)return;
   setBusy(true,'Looking up…');setLocChip('warn','LOCATING…');
   try{
-    const j=await api('/api/location/ip',{},15000);
-    if(j.status!=='APPROXIMATE_IP_LOCATION')throw new Error('online IP lookup unavailable');
+    // Looked up from YOUR browser: on a hosted deployment the server's own IP would give the data-centre's location.
+    const r=await raceFirst(IPSERVICES.map(([u,f])=>sig=>fetchJ(u,{},6000,sig).then(j=>{const x=f(j);if(!x||x.lat==null||isNaN(+x.lat)||isNaN(+x.lon))throw new Error('bad reply');return x})));
     setBusy(false);
-    applyLocation({lat:j.lat,lon:j.lon,accuracy:j.accuracy_m,source:'ip',place:[j.city,j.region,j.country].filter(Boolean).join(', '),cc:j.country_code});
+    applyLocation({lat:+r.lat,lon:+r.lon,accuracy:25000,source:'ip',place:[r.city,r.region,r.country].filter(Boolean).join(', '),cc:(r.cc||'').toUpperCase()});
   }catch(e){
     setBusy(false);$('gpsLabel').textContent='Try again';setLocChip('warn','LOCATION UNAVAILABLE');
-    setGpsStatus('Could not determine your location automatically ('+e.message+'). Use “Pick on map” or type a place name / coordinates below — everything else works from there.','err');
+    setGpsStatus('Could not determine your location automatically ('+(e.message||e)+'). Use “Pick on map” or type a place name / coordinates below — everything else works from there.','err');
   }
 }
 let autoRegionBusy=false;
 async function maybeAutoInstallRegion(lat,lon){
-  if(autoRegionBusy||!navigator.onLine||store.get('synapse.autoRegion','1')!=='1')return;
+  if(autoRegionBusy||!S.allowInstall||!navigator.onLine||store.get('synapse.autoRegion','1')!=='1')return;
   // Browsers that expose a cellular connection are never allowed to start a large map download silently.
   const connection=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
   if(connection&&String(connection.type||'').toLowerCase()==='cellular'){
@@ -550,6 +581,9 @@ async function maybeAutoInstallRegion(lat,lon){
       .sort((a,b)=>bboxArea(a.bbox)-bboxArea(b.bbox));
     if(!matches.length){$('catalogStatus').textContent='No downloadable regional extract covers this location yet. The world map remains available.';return;}
     const it=matches[0];
+    const triedKey='synapse.autoTried.'+it.id,last=+store.get(triedKey,'0');
+    if(Date.now()-last<24*3600*1000){$('catalogStatus').textContent='Automatic download of '+it.name+' was already attempted in the last 24 h; use the manual installer to retry.';return}
+    store.set(triedKey,String(Date.now()));
     const jobs=await api('/api/regions/jobs',{},10000);
     if(jobs.running){$('catalogStatus').textContent='A regional map installation is already running. Your current map download was not duplicated.';return;}
     $('catalogStatus').textContent='Automatically preparing '+it.name+' for offline use. Download and map processing may take several minutes; keep SYNAPSE EARTH running.';
@@ -571,7 +605,7 @@ async function applyLocation({lat,lon,accuracy=0,source='gps',place='',cc=''}){
   L.marker([lat,lon],{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:1000,keyboard:false}).bindTooltip('You are here').addTo(meLayer);
   if(accuracy>30)L.circle([lat,lon],{radius:Math.min(accuracy,60000),color:'#46ddc6',weight:1,fillColor:'#46ddc6',fillOpacity:.08,interactive:false}).addTo(meLayer);
   map.flyTo([lat,lon],approx?9:accuracy>3000?11:accuracy>400?13:15,{duration:1});
-  $('infoEta').hidden=true;$('infoStepsBtn').hidden=true;$('infoSteps').hidden=true;
+  $('infoEta').hidden=true;$('navStart').hidden=true;$('infoStepsBtn').hidden=true;$('infoSteps').hidden=true;
   $('infoTitle').textContent='Your location';
   $('infoSub').textContent=(approx?'Approximate (internet connection) · ':'')+lat.toFixed(5)+', '+lon.toFixed(5);
   if(place)$('placeName').textContent='📍 '+place;
@@ -587,7 +621,7 @@ async function applyLocation({lat,lon,accuracy=0,source='gps',place='',cc=''}){
 }
 async function reverseLookup(lat,lon,approx){
   try{
-    const j=await api('/api/location/reverse?lat='+lat+'&lon='+lon,{},15000);
+    const j=await api('/api/location/reverse?lat='+lat+'&lon='+lon,{},4000);
     if(j.status==='MATCHED_TO_INSTALLED_REGION'){
       const opt=[...$('region').options].find(o=>o.value===j.region_id);
       if(opt&&$('region').value!==j.region_id){$('region').value=j.region_id;await loadRegion()}
@@ -597,10 +631,15 @@ async function reverseLookup(lat,lon,approx){
     }else if(j.status==='ONLINE_REVERSE_GEOCODE'){
       $('placeName').textContent='📍 '+([j.place,j.district,j.state,j.country].filter(Boolean).join(', ')||'Place name unavailable');
       setCountryCode(j.country_code);
-    }else if(!approx){
-      const f=countryAt(lon,lat);if(f){$('placeName').textContent='📍 '+nm(f)+' (offline country boundary)';const iso=f.properties.ISO_A2;if(iso&&iso!=='-99')setCountryCode(iso)}
-    }
-  }catch(e){const f=countryAt(lon,lat);if(f)$('placeName').textContent='📍 '+nm(f)+' (offline country boundary)'}
+    }else throw new Error('no server match');
+  }catch(e){
+    try{                                    // browser-side Nominatim (own IP, so no shared-server rate limit)
+      const j=await fetchJ('https://nominatim.openstreetmap.org/reverse?'+new URLSearchParams({format:'jsonv2',lat,lon,zoom:approx?10:16,addressdetails:1}),{},7000);
+      const a=j.address||{};
+      $('placeName').textContent='📍 '+([a.road||a.neighbourhood||a.suburb,a.city||a.town||a.village||a.county,a.state,a.country].filter(Boolean).join(', ')||j.display_name||'Place name unavailable');
+      setCountryCode((a.country_code||'').toUpperCase());
+    }catch(e2){const f=countryAt(lon,lat);if(f){$('placeName').textContent='📍 '+nm(f)+' (offline country boundary)';const iso=f.properties.ISO_A2;if(iso&&iso!=='-99')setCountryCode(iso)}}
+  }
 }
 bind('gpsDetect','click',detect);
 bind('ipLocate','click',()=>ipLocate());
@@ -612,7 +651,12 @@ bind('manualForm','submit',async e=>{
   const c=parseCoords(q);if(c)return applyLocation({...c,accuracy:0,source:'manual'});
   const found=[];
   try{const local=await api('/api/search/places?q='+encodeURIComponent(q),{},15000);(local.results||[]).slice(0,10).forEach(r=>found.push({name:r.name+' · '+(r.place_type||'settlement')+' · '+(r.region||'installed')+' (offline)',lat:r.lat,lon:r.lon,cc:r.country_code}))}catch(err){}
-  if(navigator.onLine){try{const j=await api('/api/geocode?q='+encodeURIComponent(q),{},12000);(j.results||[]).forEach(r=>found.push({name:r.name,lat:r.lat,lon:r.lon,cc:r.country_code}))}
+  if(navigator.onLine){
+    try{
+      let res;
+      try{const j=await fetchJ('https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q,format:'jsonv2',limit:6,addressdetails:1}),{},8000);res=j.map(x=>({name:x.display_name,lat:+x.lat,lon:+x.lon,country_code:((x.address||{}).country_code||'').toUpperCase()}))}
+      catch(e0){res=(await api('/api/geocode?q='+encodeURIComponent(q),{},9000)).results}
+      res.forEach(r=>found.push({name:r.name,lat:r.lat,lon:r.lon,cc:r.country_code}))}
     catch(err){if(!found.length)box.append(el('div','empty','No offline match. Online place search is unavailable ('+err.message+'). Enter coordinates or pick on the map.'))}}
   else if(!found.length)box.append(el('div','empty','No matching settlement found in your installed offline map packages. Install the region while online to search it offline.'));
   found.forEach(r=>{const b=el('button','btn alt sm',r.name.length>70?r.name.slice(0,68)+'…':r.name);b.style.justifyContent='flex-start';b.style.whiteSpace='normal';b.style.textAlign='left';
@@ -640,34 +684,175 @@ const TIER={shelter:'Shelter / assembly point',refuge:'Possible refuge building'
 function setMode(m){S.mode=m;$('modeFoot').setAttribute('aria-pressed',m==='foot');$('modeCar').setAttribute('aria-pressed',m==='driving');if(S.loc&&S.zones.length)findSafeZones(true).catch(reportError)}
 bind('modeFoot','click',()=>setMode('foot'));bind('modeCar','click',()=>setMode('driving'));
 bind('kind','change',()=>{if(S.loc&&S.zones.length)findSafeZones(true).catch(reportError)});
+/* ---- online services, called from the browser (fast, and not blocked/rate-limited like a shared hosting IP) ---- */
+const OVERPASS_URLS=['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.openstreetmap.fr/api/interpreter'];
+const ROUTERS={foot:['https://routing.openstreetmap.de/routed-foot/route/v1/foot/'],driving:['https://routing.openstreetmap.de/routed-car/route/v1/driving/','https://router.project-osrm.org/route/v1/driving/']};
+function fetchJ(url,opts={},ms=10000,signal){
+  const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),ms);
+  if(signal){if(signal.aborted)ctl.abort();else signal.addEventListener('abort',()=>ctl.abort(),{once:true})}
+  return fetch(url,{...opts,signal:ctl.signal}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(()=>clearTimeout(t));
+}
+/* run all tasks at once; the first success wins and the rest are aborted */
+function raceFirst(tasks){
+  const ctls=tasks.map(()=>new AbortController());
+  return new Promise((res,rej)=>{let fails=0;const errs=[];
+    tasks.forEach((tk,i)=>tk(ctls[i].signal).then(v=>{ctls.forEach((c,k)=>{if(k!==i)c.abort()});res(v)},e=>{errs.push((e&&e.name==='AbortError')?'timeout':(e&&e.message)||String(e));if(++fails===tasks.length)rej(new Error([...new Set(errs)].join('; ')))}))});
+}
+const hav=(la1,lo1,la2,lo2)=>{const R=6371000,p=Math.PI/180,x=(la2-la1)*p,y=(lo2-lo1)*p,q=Math.sin(x/2)**2+Math.cos(la1*p)*Math.cos(la2*p)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(q))};
+const TIER_LABELS={shelter:'Mapped shelter / assembly point',refuge:'Possible refuge building',medical:'Medical facility'};
+function classify(t){
+  const g=k=>String(t[k]||'').toLowerCase(),st=g('shelter_type')||g('shelter');
+  if(['assembly_point','shelter','emergency_shelter'].includes(g('emergency'))||['evacuation_centre','evacuation_center'].includes(g('amenity')))return 'shelter';
+  if(g('disaster_shelter')==='yes'||g('emergency:social_facility')==='shelter')return 'shelter';
+  if(g('amenity')==='shelter'||['shelter','emergency_shelter'].includes(g('type'))){
+    if(g('public_transport')||g('highway')==='bus_stop'||g('bus')==='yes')return null;
+    if(['picnic_shelter','weather_shelter','public_transport','basic_hut','lean_to','gazebo','rock_shelter','bus_stop','wildlife_hide','field_shelter'].includes(st))return null;
+    return 'shelter'}
+  if(['hospital','clinic'].includes(g('amenity'))||['hospital','clinic'].includes(g('healthcare'))||['hospital','clinic'].includes(g('type')))return 'medical';
+  if(['community_centre','townhall','fire_station'].includes(g('amenity'))||['community_centre','townhall','fire_station'].includes(g('type')))return 'refuge';
+  return null;
+}
+function overpassQ(lat,lon,rs,ro,to){
+  const a=`(around:${rs},${lat.toFixed(6)},${lon.toFixed(6)})`,b=`(around:${ro},${lat.toFixed(6)},${lon.toFixed(6)})`;
+  return `[out:json][timeout:${to}];(nwr${a}["emergency"~"^(assembly_point|shelter|emergency_shelter)$"];nwr${a}["amenity"~"^(evacuation_centre|evacuation_center)$"];nwr${a}["amenity"="shelter"]["shelter_type"!~"^(picnic_shelter|weather_shelter|public_transport|basic_hut|lean_to|gazebo|rock_shelter)$"]["public_transport"!~"."]["highway"!~"."];)->.s;(nwr${b}["amenity"~"^(hospital|clinic)$"];nwr${b}["amenity"~"^(community_centre|townhall|fire_station)$"];)->.o;.s out tags center 120;.o out tags center 120;`;
+}
+async function overpassCandidates(lat,lon,rs,ro,to,signal){
+  const q=overpassQ(lat,lon,rs,ro,to);
+  const j=await raceFirst(OVERPASS_URLS.map(u=>sig=>{const c=new AbortController();[signal,sig].forEach(x=>{if(x)x.addEventListener('abort',()=>c.abort(),{once:true})});
+    return fetchJ(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)},(to+3)*1000,c.signal).then(r=>{if(!r||!Array.isArray(r.elements))throw new Error('bad reply');return r})}));
+  const out=[];
+  for(const el of j.elements){const tags=el.tags||{},tier=classify(tags);if(!tier)continue;
+    const la=el.lat!=null?el.lat:(el.center||{}).lat,lo=el.lon!=null?el.lon:(el.center||{}).lon;if(la==null||lo==null)continue;
+    out.push({id:'osm-'+(el.type||'n')[0]+el.id,name:tags.name||tags['name:en']||'Unnamed '+TIER_LABELS[tier].toLowerCase(),tier,kind:tags.emergency||tags.amenity||tags.healthcare||tier,lat:+la,lon:+lo,straight_line_m:Math.round(hav(lat,lon,la,lo)),source:'OpenStreetMap (online)',phone:tags.phone||tags['contact:phone']||null})}
+  return out;
+}
+async function nominatimCandidates(lat,lon,signal){
+  const h=.12,box=[lon-h,lat+h,lon+h,lat-h].map(x=>x.toFixed(5)).join(',');
+  const terms=['hospital','clinic','evacuation shelter','assembly point','community centre','fire station'];
+  const rs=await Promise.allSettled(terms.map(t=>fetchJ('https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q:t,format:'jsonv2',limit:20,bounded:1,viewbox:box}),{},9000,signal)));
+  if(rs.every(r=>r.status==='rejected'))throw new Error(rs[0].reason&&rs[0].reason.message||'unreachable');
+  const out=[],seen=new Set();
+  rs.forEach(r=>{if(r.status!=='fulfilled')return;for(const x of r.value){const tags={};tags[x.category||x.class||'']=x.type||'';const tier=classify(tags),key=x.osm_type+x.osm_id;if(!tier||seen.has(key))continue;seen.add(key);
+    out.push({id:'nom-'+(x.osm_type||'n')[0]+x.osm_id,name:x.name||(x.display_name||'').split(',')[0]||'Unnamed '+TIER_LABELS[tier].toLowerCase(),tier,kind:x.type||tier,lat:+x.lat,lon:+x.lon,straight_line_m:Math.round(hav(lat,lon,+x.lat,+x.lon)),source:'OpenStreetMap search (online)',phone:null})}});
+  return out;
+}
+async function fetchElevations(pts,signal){
+  try{const j=await fetchJ('https://api.open-meteo.com/v1/elevation?'+new URLSearchParams({latitude:pts.map(p=>p[0].toFixed(5)).join(','),longitude:pts.map(p=>p[1].toFixed(5)).join(',')}),{},3500,signal);
+    return Array.isArray(j.elevation)&&j.elevation.length===pts.length?j.elevation:null}catch(e){return null}
+}
+function dedupeC(c,within=40){const kept=[];[...c].sort((a,b)=>a.straight_line_m-b.straight_line_m).forEach(x=>{if(!kept.some(k=>k.tier===x.tier&&hav(k.lat,k.lon,x.lat,x.lon)<within))kept.push(x)});return kept}
+function pickC(cands,hazard,userElev,elev){
+  const mult={shelter:1,refuge:1.8,medical:1.5};
+  cands.forEach(c=>{c.elevation_m=elev[c.id]!=null?elev[c.id]:null;const gain=(userElev!=null&&c.elevation_m!=null)?Math.round(c.elevation_m-userElev):null;c.elevation_gain_m=gain;
+    let sc=c.straight_line_m*mult[c.tier];const notes=[];
+    if((hazard==='Flood'||hazard==='Cyclone')&&gain!=null){if(gain>=5){sc*=.8;notes.push('higher ground (+'+gain+' m)')}else if(gain<=-5){sc*=1.6;notes.push('lower than you ('+gain+' m) — avoid for '+hazard.toLowerCase())}}
+    c.notes=notes;c.score=Math.round(sc);c.tier_label=TIER_LABELS[c.tier];c.verification='Mapped record only: opening status, capacity, hazard exposure and safety are NOT verified.'});
+  // v16 policy: never hide mapped alternatives behind category quotas; rank purely by score, then by distance
+  return cands.sort((a,b)=>a.score-b.score||a.straight_line_m-b.straight_line_m).slice(0,8);
+}
+function bearingTxt(la1,lo1,la2,lo2){const p=Math.PI/180,y=Math.sin((lo2-lo1)*p)*Math.cos(la2*p),x=Math.cos(la1*p)*Math.sin(la2*p)-Math.sin(la1*p)*Math.cos(la2*p)*Math.cos((lo2-lo1)*p);const d=(Math.atan2(y,x)/p+360)%360;return ['N','NE','E','SE','S','SW','W','NW'][Math.floor((d+22.5)/45)%8]+' ('+Math.round(d)+'°)'}
+function stepText(s){const m=s.maneuver||{},t=m.type||'',mod=m.modifier||'',n=s.name||'the road';
+  if(t==='arrive')return 'Arrive at your destination';if(t==='depart')return 'Head '+(mod||'')+' on '+n;
+  if(mod==='uturn')return 'Make a U-turn onto '+n;if(mod==='straight'&&t!=='roundabout')return 'Continue straight on '+n;
+  if(['turn','end of road','fork','on ramp','off ramp','merge'].includes(t))return 'Turn '+(mod||'')+' onto '+n;
+  if(t==='roundabout'||t==='rotary')return 'Take the roundabout onto '+n;return 'Continue on '+n}
+async function routeOnline(a,b,mode,signal){
+  const c=a.lon.toFixed(6)+','+a.lat.toFixed(6)+';'+b.lon.toFixed(6)+','+b.lat.toFixed(6);
+  const j=await raceFirst(ROUTERS[mode].map(u=>sig=>{const k=new AbortController();[signal,sig].forEach(x=>{if(x)x.addEventListener('abort',()=>k.abort(),{once:true})});
+    return fetchJ(u+c+'?overview=full&geometries=geojson&steps=true',{},9000,k.signal).then(r=>{if(r.code!=='Ok'||!r.routes||!r.routes.length)throw new Error(r.code||'no route');return r})}));
+  const r=j.routes[0],steps=[],names=[];
+  (r.legs||[]).forEach(l=>(l.steps||[]).forEach(s=>{if(s.name)names.push(s.name);const m=s.maneuver||{};steps.push({text:stepText(s),distance_m:Math.round(s.distance||0),loc:m.location||null,type:m.type||'',modifier:m.modifier||''})}));
+  return {status:'CANDIDATE_ROUTE',source:'online road routing (OpenStreetMap data)',mode,distance_m:Math.round(r.distance),duration_s:Math.round(r.duration),coordinates:r.geometry.coordinates,road_names:[...new Set(names)].slice(0,12),steps,
+    warning:'Candidate route only. Road closures, hazard exposure and access restrictions are not modelled; confirm with emergency authorities.'};
+}
+function straightRoute(a,b,why){const d=Math.round(hav(a.lat,a.lon,b.lat,b.lon));
+  return {status:'STRAIGHT_LINE_ONLY',source:'straight-line bearing (no road data)',distance_m:d,coordinates:[[a.lon,a.lat],[b.lon,b.lat]],road_names:[],steps:[],bearing:bearingTxt(a.lat,a.lon,b.lat,b.lon),
+    warning:'No road route could be calculated'+(why?': '+why:'')+'. The dashed line is a direct bearing only and may cross water, barriers or hazards.'}}
+async function routeAny(a,b,mode,signal){try{return await routeOnline(a,b,mode,signal)}catch(e){return straightRoute(a,b,e&&e.message)}}
+
+/* progressive search: quick small-radius pass first, widen only if needed; the whole thing is capped at 40 s */
+async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
+  if(!navigator.onLine)return {ok:false,notes:['You are offline — showing installed offline map data only. Connect to the internet to also search OpenStreetMap.']};
+  const budget=new AbortController(),timer=setTimeout(()=>budget.abort(),48000),notes=[];
+  const routed=new Map();let userElev=null,elev={},all=[];
+  const emit=async(label)=>{
+    const cands=dedupeC(all);
+    if(!userElev&&(hazard==='Flood'||hazard==='Cyclone')&&cands.length){
+      const ev=await fetchElevations([[lat,lon],...cands.slice(0,99).map(c=>[c.lat,c.lon])],budget.signal);
+      if(ev){userElev=ev[0];cands.slice(0,99).forEach((c,i)=>{elev[c.id]=ev[i+1]})}}
+    const chosen=pickC(cands,hazard,userElev,elev);
+    await Promise.all(chosen.map(async c=>{const k=c.id+'|'+mode;if(!routed.has(k))routed.set(k,routeAny({lat,lon},c,mode,budget.signal));c.route=await routed.get(k)}));
+    if(tok!==zoneToken)return;
+    onUpdate({dests:chosen,notes:[...notes],userElev,label});
+  };
+  try{
+    let phaseA=null,usedFallback=false;
+    try{phaseA=await overpassCandidates(lat,lon,6000,3000,10,budget.signal)}
+    catch(e){
+      try{phaseA=await nominatimCandidates(lat,lon,budget.signal);usedFallback=true;notes.push('Main OpenStreetMap shelter service was unreachable, so results come from a slower fallback search and may be less complete.')}
+      catch(e2){notes.push('Online shelter search failed: '+(e&&e.message)+' | fallback: '+(e2&&e2.message))}
+    }
+    if(phaseA){all=phaseA;await emit('nearby')}
+    if(!usedFallback&&phaseA!==null&&(tok===zoneToken)&&dedupeC(all).filter(c=>c.tier==='shelter').length<2){
+      try{const wide=await overpassCandidates(lat,lon,25000,8000,20,budget.signal);const ids=new Set(all.map(c=>c.id));wide.forEach(c=>{if(!ids.has(c.id))all.push(c)});await emit('wide')}
+      catch(e){if(!all.length)notes.push('Wider shelter search failed: '+(e&&e.message))}
+    }
+    const nearShelter=()=>dedupeC(all).some(c=>c.tier==='shelter'&&hav(lat,lon,c.lat,c.lon)<10000);
+    if(tok===zoneToken&&!usedFallback&&phaseA!==null&&!nearShelter()){
+      try{const far=await overpassCandidates(lat,lon,80000,30000,25,budget.signal);const ids=new Set(all.map(c=>c.id));far.forEach(c=>{if(!ids.has(c.id))all.push(c)});if(all.length)notes.push('No shelter was found close to you, so the search was widened to about 80 km.');await emit('far')}
+      catch(e){if(!all.length)notes.push('Wide-area shelter search failed: '+(e&&e.message))}
+    }
+    return {ok:all.length>0,notes};
+  }finally{clearTimeout(timer)}
+}
+
+/* ---- orchestration: installed offline data (instant) + online (progressive), merged ---- */
 let zoneToken=0;
+function mergeDests(off,on){
+  const out=[];[...off,...on].forEach(d=>{if(!out.some(k=>k.tier===d.tier&&hav(k.lat,k.lon,d.lat,d.lon)<40))out.push(d)});
+  out.sort((a,b)=>(a.route.status!=='CANDIDATE_ROUTE')-(b.route.status!=='CANDIDATE_ROUTE')||(a.tier!=='shelter')-(b.tier!=='shelter')||a.score-b.score);
+  return out.filter(d=>!S.unavailable.has(d.id)&&!S.visited.has(d.id)).slice(0,8);
+}
 async function findSafeZones(auto=false){
   const out=$('routeStatus'),list=$('zoneList'),btn=$('autoEvacuate');
   if(!S.loc){out.textContent='Detect or set your location first — no destination needs to be typed.';if(!auto)toast('Detect your location first.');return}
-  const tok=++zoneToken;btn.disabled=true;
-  out.textContent='Searching mapped shelters, assembly points and medical facilities, then ranking candidates by road distance where available…';
+  if(NAV.on)return;
+  const tok=++zoneToken,lat=S.loc.lat,lon=S.loc.lon,hazard=$('kind').value,mode=S.mode,t0=performance.now();
+  btn.disabled=true;
+  out.textContent='Searching installed maps and OpenStreetMap… first results usually appear within a few seconds.';
   list.innerHTML='';for(let i=0;i<3;i++)list.append(el('div','skeleton'));
-  let j;
-  try{j=await api('/api/safezones?lat='+S.loc.lat+'&lon='+S.loc.lon+'&hazard='+encodeURIComponent($('kind').value)+'&mode='+S.mode+'&cc='+encodeURIComponent(S.cc),{},90000)}
-  catch(e){if(tok!==zoneToken)return;list.innerHTML='';out.textContent='Could not calculate safer zones: '+e.message;btn.disabled=false;return}
+  let offD=[],onD=[],notes=[],elevNow=null,rendered=false,first=true;
+  const prevId=()=>S.zones[S.sel]&&S.zones[S.sel].id;
+  const render=(label,final)=>{
+    if(tok!==zoneToken)return;
+    const keep=rendered?prevId():null;
+    S.zones=mergeDests(offD,onD);if(!S.zones.length&&!final)return;
+    list.innerHTML='';rendered=true;
+    if(!S.zones.length){
+      out.textContent='';list.append(el('div','status warn','No mapped shelters, assembly points, community buildings or medical facilities were found within range. SYNAPSE will not invent a safe destination. Install a regional map package, try again, or contact local emergency services.'));
+      notes.forEach(n=>list.append(el('div','status err','⚠ '+n)));
+      const rb=el('button','btn alt sm','Retry search');rb.type='button';rb.onclick=()=>findSafeZones(false);list.append(rb);
+      list.append(el('div','status','Emergency number: '+$('sosNumber').textContent));zoneLayer.clearLayers();return}
+    const secs=((performance.now()-t0)/1000).toFixed(1);
+    out.textContent='Found '+S.zones.length+' candidate'+(S.zones.length>1?'s':'')+(final?' in '+secs+' s':' · '+(label==='nearby'?'widening search…':'refining…'))+(elevNow!=null?' · your elevation ≈ '+Math.round(elevNow)+' m':'')+'. Tap one to show its route.';
+    const n0=S.zones[0],far0=n0?hav(lat,lon,n0.lat,n0.lon):0;
+    if(far0>10000){const d=el('div','status warn','No safer zone within 10 km. The closest mapped one is about '+(far0/1000).toFixed(0)+' km away — head there first. When you arrive, press “Find next safer zone from here” and SYNAPSE will search again from that point.');d.style.marginTop='6px';out.append(d)}
+    notes.forEach(n=>{const d=el('div','hint',n);d.style.marginTop='4px';out.append(d)});
+    S.sel=keep?Math.max(0,S.zones.findIndex(z=>z.id===keep)):0;
+    S.zones.forEach((z,i)=>list.append(zoneCard(z,i)));
+    zoneLayer.clearLayers();selectZone(S.sel,false);
+    if(first){first=false;const pts=[[lat,lon],...S.zones.slice(0,3).map(z=>[z.lat,z.lon])];map.flyToBounds(L.latLngBounds(pts),{padding:[60,60],maxZoom:16,duration:.9})}
+    if(final)setGpsStatus('Location set · '+S.zones.length+' safer-zone candidates mapped. Press ▶ Start on the map card for live guidance.','good');
+  };
+  const offQ=r=>api('/api/safezones?lat='+lat+'&lon='+lon+'&hazard='+encodeURIComponent(hazard)+'&mode='+mode+'&cc='+encodeURIComponent(S.cc)+'&online=0&radius_m='+r,{},15000)
+    .then(j=>{if(tok!==zoneToken)return;offD=(j.destinations||[]).map(d=>({...d,route:{...d.route}}));S.emerg=j.emergency_number;return offD}).catch(()=>offD);
+  const offP=offQ(30000).then(async d=>{if(tok!==zoneToken)return;render('offline',false);
+    if(!(d||[]).some(z=>z.tier==='shelter'&&z.straight_line_m<10000)){await offQ(150000);if(tok===zoneToken)render('offline',false)}});
+  const onP=onlineSearch(lat,lon,hazard,mode,u=>{onD=u.dests;notes=u.notes;elevNow=u.userElev;render(u.label,false)},tok);
+  let res;try{res=await onP}catch(e){res={ok:false,notes:['Online search error: '+e.message]}}
+  await offP;
   if(tok!==zoneToken)return;
-  btn.disabled=false;list.innerHTML='';
-  S.zones=(j.destinations||[]).filter(z=>!S.unavailable.has(z.id));S.emerg=j.emergency_number;
-  zoneLayer.clearLayers();S.sel=-1;
-  const src=[];if(j.sources&&j.sources.offline_data)src.push('installed offline map');if(j.sources&&j.sources.online_data)src.push('OpenStreetMap (online)');
-  if(!S.zones.length){
-    out.textContent='';const m=el('div','status warn',j.message||'No candidates found.');list.append(m);
-    (j.notes||[]).forEach(n=>list.append(el('div','status err','⚠ '+n)));
-    const rb=el('button','btn alt sm','Retry search');rb.type='button';rb.onclick=()=>findSafeZones(false);list.append(rb);
-    list.append(el('div','status','Emergency number: '+(j.emergency_number||'112')));return;
-  }
-  out.textContent='Showing '+S.zones.length+' available mapped candidates'+(src.length?' from '+src.join(' + '):'')+'. Ordered by road distance when available. Capacity and opening status are not verified.';
-  (j.notes||[]).forEach(n=>{const d=el('div','hint',n);d.style.marginTop='4px';out.append(d)});
-  drawZones();S.zones.forEach((z,i)=>list.append(zoneCard(z,i)));
-  selectZone(0,false);
-  const pts=[[S.loc.lat,S.loc.lon],...S.zones.slice(0,3).map(z=>[z.lat,z.lon])];
-  map.flyToBounds(L.latLngBounds(pts),{padding:[60,60],maxZoom:16,duration:.9});
-  setGpsStatus('Location set · '+S.zones.length+' mapped candidates. Nearest road-route options are listed first; verify availability on arrival.','good');
+  notes=res.notes;btn.disabled=false;render('final',true);
 }
 function zoneIcon(z,i,sel){return L.divIcon({className:'',html:'<div class="zm t-'+z.tier+(sel?' sel':'')+'"><span>'+(i+1)+'</span></div>',iconSize:sel?[36,36]:[30,30],iconAnchor:sel?[4,34]:[3,28]})}
 function midpoint(ll){let t=0,seg=[];for(let i=1;i<ll.length;i++){const d=map.distance(ll[i-1],ll[i]);seg.push(d);t+=d}let h=t/2;for(let i=0;i<seg.length;i++){if(h<=seg[i]){const f=seg[i]?h/seg[i]:0;return[ll[i][0]+(ll[i+1][0]-ll[i][0])*f,ll[i][1]+(ll[i+1][1]-ll[i][1])*f]}h-=seg[i]}return ll[0]}
@@ -679,7 +864,7 @@ function drawZones(){
     L.polyline(ll(z),{pane:'zones',color:'#ffffff',weight:7,opacity:.7,interactive:false}).addTo(zoneLayer);
     L.polyline(ll(z),{pane:'zones',color:'#8a97a3',weight:4,opacity:.95,dashArray:road?null:'4 8',interactive:false}).addTo(zoneLayer)});
   const s=S.zones[S.sel];
-  if(s){const pts=ll(s),road=s.route.status==='CANDIDATE_ROUTE';
+  if(s&&!S.navigating){const pts=ll(s),road=s.route.status==='CANDIDATE_ROUTE';
     L.polyline(pts,{pane:'zones',color:'#ffffff',weight:11,opacity:1,lineCap:'round',lineJoin:'round',interactive:false}).addTo(zoneLayer);
     L.polyline(pts,{pane:'zones',color:road?'#1a73e8':'#e8710a',weight:6,opacity:1,lineCap:'round',lineJoin:'round',dashArray:road?null:'1 11',interactive:false}).addTo(zoneLayer);
     if(pts.length>1)L.marker(midpoint(pts),{pane:'bubble',interactive:false,keyboard:false,icon:L.divIcon({className:'',html:'<div class="etabub">'+fmtDur(etaSeconds(s))+'</div>',iconSize:[0,0]})}).addTo(zoneLayer)}
@@ -705,6 +890,7 @@ function zoneCard(z,i){
   return c;
 }
 function selectZone(i,fly){
+  if(NAV.on)return;
   S.sel=i;const z=S.zones[i];if(!z)return;
   document.querySelectorAll('#zoneList .zone').forEach(c=>{
     const on=+c.dataset.i===i;c.setAttribute('aria-selected',on);
@@ -720,7 +906,7 @@ function selectZone(i,fly){
   const eta=$('infoEta');eta.hidden=false;eta.innerHTML='';eta.append(el('strong',null,fmtDur(etaSeconds(z))),el('span',null,'('+fmtDist(z.route.distance_m||z.straight_line_m)+(road?'':' straight-line')+') · '+(S.mode==='foot'?'🚶 walking':'🚗 driving')));
   const steps=$('infoSteps'),sb=$('infoStepsBtn');steps.innerHTML='';steps.hidden=true;sb.textContent='Show directions';
   const list=(z.route.steps||[]);
-  sb.hidden=false;
+  sb.hidden=false;$('navStart').hidden=false;
   steps.append(...(list.length?list.slice(0,30).map(x=>el('li',null,x.text+(x.distance_m?' ('+fmtDist(x.distance_m)+')':''))):[el('li',null,road?'Follow '+((z.route.road_names||[]).slice(0,4).join(' → ')||'the highlighted road')+'.':'No road route: head '+(z.route.bearing||'toward the marker')+' (direct line).')]));
 }
 function zoneDetail(z){
@@ -765,12 +951,13 @@ async function refreshRegions(){
   if(cur)$('region').value=cur;
 }
 async function loadRegion(){
-  const id=$('region').value;S.pkg=null;S.nodes=null;
+  const id=$('region').value;S.pkg=null;roadCache.clear();
   if(id){
-    S.pkg=await api('/api/region/'+id,{},120000);S.nodes=Object.fromEntries(S.pkg.nodes.map(n=>[n.id,n]));
-    $('nodes').textContent=S.pkg.nodes.length;$('edges').textContent=S.pkg.edges.length;
-    $('coverage').textContent=S.pkg.manifest.road_nodes+' road nodes · '+S.pkg.places.length+' places · '+S.pkg.facilities.length+' facilities · built '+(S.pkg.manifest.generated_at||'').slice(0,10);
-    renderPlaces('');
+    // Small summary only: the multi-hundred-MB package stays on the server.
+    const info=await api('/api/region-info/'+encodeURIComponent(id),{},30000);S.pkg={manifest:info.manifest,counts:info.counts};
+    $('nodes').textContent=info.counts.nodes;$('edges').textContent=info.counts.edges;
+    $('coverage').textContent=info.manifest.road_nodes+' road nodes · '+info.counts.places+' places · '+info.counts.facilities+' facilities · built '+(info.manifest.generated_at||'').slice(0,10);
+    renderPlaces($('placeSearch').value);
   }else{$('nodes').textContent='0';$('edges').textContent='0';$('coverage').textContent='No regional detail selected. The world map and online shelter search still work.';$('places').textContent=''}
   drawRoads();
 }
@@ -815,6 +1002,117 @@ bind('catalogInstall','click',async()=>{
   catch(e){st.textContent='Install failed: '+e.message+'. Try a smaller subregion; the import needs the “osmium” Python package and free disk space.'}
   finally{b.disabled=false}
 });
+
+
+/* ============================== LIVE NAVIGATION (Start) ============================== */
+const NAV={on:false,watch:null,z:null,pts:null,cum:null,total:1,steps:[],off:0,spoken:new Set(),voice:true,wake:null,follow:true,rerouting:false,arrived:false,pace:null};
+const navLayer=L.layerGroup().addTo(map);
+function speak(t){if(!NAV.voice||!('speechSynthesis' in window))return;try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang=navigator.language||'en-US';speechSynthesis.speak(u)}catch(e){}}
+function navProject(lat,lon){
+  const k=Math.cos(lat*Math.PI/180),M=111320;let best={dist:Infinity,along:0,i:1,pt:[lon,lat]};
+  for(let i=1;i<NAV.pts.length;i++){const a=NAV.pts[i-1],b=NAV.pts[i];
+    const ax=(a[0]-lon)*k*M,ay=(a[1]-lat)*M,bx=(b[0]-lon)*k*M,by=(b[1]-lat)*M,dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;
+    const t=L2?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/L2)):0,d=Math.hypot(ax+t*dx,ay+t*dy);
+    if(d<best.dist)best={dist:d,along:NAV.cum[i-1]+t*(NAV.cum[i]-NAV.cum[i-1]),i,pt:[a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]}}
+  return best;
+}
+function navPrep(route){
+  const pts=route.coordinates,cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+hav(pts[i-1][1],pts[i-1][0],pts[i][1],pts[i][0]));
+  NAV.pts=pts;NAV.cum=cum;NAV.total=Math.max(1,cum[cum.length-1]);
+  NAV.steps=(route.steps||[]).filter(x=>x.loc&&x.type!=='depart').map(x=>({...x,along:navProject(x.loc[1],x.loc[0]).along}));
+  NAV.pace=route.duration_s&&route.distance_m?route.duration_s/route.distance_m:(S.mode==='foot'?1/1.25:1/8.3);
+  NAV.spoken.clear();
+}
+const ARROWS={'left':'↰','right':'↱','slight left':'↖','slight right':'↗','sharp left':'⮢','sharp right':'⮣','straight':'↑','uturn':'↶'};
+function navDraw(proj){
+  navLayer.clearLayers();
+  const done=NAV.pts.slice(0,proj.i).map(c=>[c[1],c[0]]).concat([[proj.pt[1],proj.pt[0]]]);
+  const rest=[[proj.pt[1],proj.pt[0]]].concat(NAV.pts.slice(proj.i).map(c=>[c[1],c[0]]));
+  L.polyline(done,{pane:'zones',color:'#9aa7b2',weight:6,opacity:.9,interactive:false}).addTo(navLayer);
+  L.polyline(rest,{pane:'zones',color:'#ffffff',weight:11,opacity:1,lineCap:'round',lineJoin:'round',interactive:false}).addTo(navLayer);
+  L.polyline(rest,{pane:'zones',color:NAV.z.route.status==='CANDIDATE_ROUTE'?'#1a73e8':'#e8710a',weight:6,opacity:1,lineCap:'round',lineJoin:'round',dashArray:NAV.z.route.status==='CANDIDATE_ROUTE'?null:'1 11',interactive:false}).addTo(navLayer);
+}
+function setMe(lat,lon,acc){
+  meLayer.clearLayers();
+  L.marker([lat,lon],{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:1000,keyboard:false}).addTo(meLayer);
+  if(acc>30)L.circle([lat,lon],{radius:Math.min(acc,60000),color:'#46ddc6',weight:1,fillColor:'#46ddc6',fillOpacity:.08,interactive:false}).addTo(meLayer);
+}
+function navFix(c){
+  if(!NAV.on||NAV.arrived)return;
+  const lat=c.latitude,lon=c.longitude,acc=Math.round(c.accuracy||0);
+  S.loc={...S.loc,lat,lon,accuracy:acc};setMe(lat,lon,acc);
+  const pr=navProject(lat,lon),rem=Math.max(0,NAV.total-pr.along);
+  // off-route detection (needs 3 consecutive bad fixes so a GPS jitter doesn't trigger it)
+  const limit=Math.max(S.mode==='foot'?60:110,acc*1.5);
+  if(pr.dist>limit&&NAV.z.route.status==='CANDIDATE_ROUTE'){if(++NAV.off>=3)return navReroute()}else NAV.off=0;
+  navDraw(pr);
+  if(NAV.follow)map.setView([lat,lon],Math.max(map.getZoom(),17),{animate:true,duration:.6});
+  if(rem<=Math.max(25,Math.min(acc,60)))return navArrive();
+  // next manoeuvre
+  const nxt=NAV.steps.find(x=>x.along>pr.along+4);
+  const secs=rem*NAV.pace;
+  $('navRem').textContent=fmtDist(rem)+' · '+fmtDur(secs);
+  $('navSub').textContent='ETA '+new Date(Date.now()+secs*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' · '+Math.round(pr.along/NAV.total*100)+'% done'+(pr.dist>limit?' · off the planned route':'');
+  $('navFill').style.width=Math.min(100,pr.along/NAV.total*100)+'%';
+  if(nxt){const d=nxt.along-pr.along;
+    $('navDist').textContent=fmtDist(d);$('navText').textContent=nxt.text;
+    $('navArrow').textContent=nxt.type==='arrive'?'⚑':(ARROWS[nxt.modifier]||'↑');
+    const th=S.mode==='foot'?[100,30]:[400,150,40];
+    th.forEach(t=>{const key=NAV.steps.indexOf(nxt)+':'+t;if(d<=t&&!NAV.spoken.has(key)){th.forEach(u=>{if(u>=t)NAV.spoken.add(NAV.steps.indexOf(nxt)+':'+u)});speak('In '+(d>=100?Math.round(d/10)*10:Math.round(d))+' metres, '+nxt.text.charAt(0).toLowerCase()+nxt.text.slice(1))}});
+  }else{
+    $('navDist').textContent=fmtDist(rem);$('navText').textContent='Follow the highlighted route to '+NAV.z.name;$('navArrow').textContent='↑';
+  }
+  // spoken progress for steps-less (offline) routes, at each quarter of the way
+  [.75,.5,.25].forEach(q=>{if(!nxt&&rem<=NAV.total*q&&!NAV.spoken.has('q'+q)){NAV.spoken.add('q'+q);speak(fmtDist(rem)+' remaining')}});
+}
+async function navReroute(){
+  if(NAV.rerouting)return;NAV.rerouting=true;NAV.off=0;
+  $('navText').textContent='Off route — recalculating…';speak('Off route. Recalculating.');toast('Off route — recalculating…','',3000);
+  try{const r=await routeAny({lat:S.loc.lat,lon:S.loc.lon},NAV.z,S.mode);NAV.z.route=r;navPrep(r);toast(r.status==='CANDIDATE_ROUTE'?'New route found':'No road route — showing direct line','ok',3000)}
+  catch(e){toast('Could not recalculate: '+e.message,'err')}
+  finally{NAV.rerouting=false}
+}
+function navArrive(){
+  NAV.arrived=true;if(NAV.watch!=null){navigator.geolocation.clearWatch(NAV.watch);NAV.watch=null}
+  $('navArrow').textContent='⚑';$('navDist').textContent='Arrived';$('navText').textContent=NAV.z.name+' — stay alert and follow responders’ instructions.';
+  $('navRem').textContent='You have arrived';$('navSub').textContent='Mapped record only — confirm the site is open and safe.';$('navFill').style.width='100%';
+  speak('You have arrived at '+NAV.z.name);
+  $('navNext').hidden=false;
+}
+async function navStart(){
+  const z=S.zones[S.sel];if(!z)return toast('Select a safer zone first.');
+  if(!('geolocation' in navigator))return toast('This browser has no GPS support, so live guidance is unavailable.','err');
+  NAV.on=true;NAV.z=z;NAV.arrived=false;NAV.follow=true;NAV.off=0;S.navigating=true;
+  navPrep(z.route);$('navNext').hidden=true;
+  document.body.classList.add('map-nav');$('navBanner').hidden=false;$('navPanel').hidden=false;
+  $('navDest').textContent='To '+z.name+' · '+z.tier_label+(z.route.status==='CANDIDATE_ROUTE'?'':' · direct line only (no road route)');
+  $('navVoice').setAttribute('aria-pressed',NAV.voice);$('navVoice').textContent=NAV.voice?'🔊':'🔇';
+  drawZones();map.invalidateSize();
+  try{if('wakeLock' in navigator)NAV.wake=await navigator.wakeLock.request('screen')}catch(e){}
+  navFix({latitude:S.loc.lat,longitude:S.loc.lon,accuracy:S.loc.accuracy||0});
+  speak('Starting navigation to '+z.name+'. '+fmtDist(NAV.total)+' to go.');
+  NAV.watch=navigator.geolocation.watchPosition(p=>navFix(p.coords),e=>{const now=Date.now();if((e.code===1||now-(NAV.lastErr||0)>30000)&&(e.code!==3||now-(NAV.lastErr||0)>30000)){NAV.lastErr=now;toast(e.code===1?'Location permission was withdrawn — live guidance stopped.':'Weak GPS signal — keep the page open, ideally outdoors.','err',5000)}},{enableHighAccuracy:true,maximumAge:1000,timeout:25000});
+}
+async function navNext(){
+  const z=NAV.z;if(!z)return;
+  const here=S.loc?{lat:S.loc.lat,lon:S.loc.lon}:{lat:z.lat,lon:z.lon};
+  S.visited.add(z.id);navStop();
+  await applyLocation({lat:here.lat,lon:here.lon,accuracy:S.loc?S.loc.accuracy:30,source:'gps'});
+  toast('Searching for the next safer zone from here…','ok',3500);
+}
+function navStop(){
+  $('navNext').hidden=true;
+  if(NAV.watch!=null){try{navigator.geolocation.clearWatch(NAV.watch)}catch(e){}NAV.watch=null}
+  try{if(NAV.wake)NAV.wake.release()}catch(e){}NAV.wake=null;
+  try{speechSynthesis.cancel()}catch(e){}
+  NAV.on=false;S.navigating=false;NAV.arrived=false;navLayer.clearLayers();
+  document.body.classList.remove('map-nav');$('navBanner').hidden=true;$('navPanel').hidden=true;
+  drawZones();map.invalidateSize();
+}
+bind('navStart','click',navStart);bind('navNext','click',navNext);bind('navEnd','click',navStop);
+bind('navVoice','click',()=>{NAV.voice=!NAV.voice;$('navVoice').textContent=NAV.voice?'🔊':'🔇';$('navVoice').setAttribute('aria-pressed',NAV.voice);if(!NAV.voice)try{speechSynthesis.cancel()}catch(e){}});
+map.on('dragstart',()=>{if(NAV.on)NAV.follow=false});
+document.addEventListener('visibilitychange',async()=>{if(!document.hidden&&NAV.on&&'wakeLock' in navigator){try{NAV.wake=await navigator.wakeLock.request('screen')}catch(e){}}});
 
 /* ---- bulk install ---- */
 const pathOf=it=>it.pbf.replace(/^https:\/\/download\.geofabrik\.de\//,'').replace(/-latest\.osm\.pbf$/,'');
@@ -914,6 +1212,7 @@ api('/api/auth/me',{},8000).then(j=>{if(j.authenticated){csrf=j.csrf;$('authOpen
 /* ============================== NETWORK / RIGHT PANEL ============================== */
 function netState(){const on=navigator.onLine;$('netChip').className='chip '+(on?'ok':'warn');$('netLabel').textContent=on?'ONLINE':'OFFLINE · LOCAL DATA ONLY'}
 window.addEventListener('online',()=>{netState();if(!activeBase)setBase('Streets');toast('Back online · loading street map tiles','ok',2500)});
+try{if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))navigator.serviceWorker.register('/sw.js').catch(()=>{})}catch(e){}
 window.addEventListener('offline',()=>{netState();toast('You are offline. Installed regional data and the offline world map keep working.','',6000)});
 netState();
 function rightToggle(){const small=matchMedia('(max-width:1240px) and (min-width:901px)').matches;$('toggleRight').style.display=small?'':'none'}
@@ -922,7 +1221,16 @@ matchMedia('(max-width:1240px)').addEventListener('change',rightToggle);rightTog
 window.addEventListener('resize',()=>map.invalidateSize());
 
 /* ============================== BOOT ============================== */
+S.allowInstall=true;
+async function loadConfig(){
+  try{
+    const c=await api('/api/config',{},8000);S.allowInstall=!!c.allow_install;
+    if(!S.allowInstall){$('installTools').hidden=true;$('installNote').hidden=false;const ar=$('autoRegion');if(ar&&ar.parentElement)ar.parentElement.hidden=true;
+      $('catalogStatus').textContent='Regional maps are pre-installed on the server.'}
+  }catch(e){}
+}
 (async()=>{
+  await loadConfig();
   await loadWorld();
   try{await refreshRegions()}catch(e){toast('Could not list installed regions: '+e.message,'err')}
   updateTileChip();

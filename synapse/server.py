@@ -5,14 +5,18 @@ from urllib.parse import urlparse,unquote
 from .engine import load_regions,get_region,activate_package,run_agents,shortest_path,save_package,haversine
 from .auth import AuthStore,AuthError
 from . import online
+from . import prefetch as prefetch_mod
+from .catalog import get_catalog
+from .engine import _graph_for
+import threading,time
 from .installer import BatchInstaller,install_one,validate_item
 import mimetypes
 UI_DIR=Path(__file__).resolve().parent.parent/"ui"
 class App(BaseHTTPRequestHandler):
     data="data"
     def log_message(self,*a): pass
-    def sendj(self,code,obj):
-        b=json.dumps(obj,ensure_ascii=False).encode();self.send_response(code);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Content-Length",str(len(b)));self.send_header("Cache-Control","no-store");self.end_headers();self.wfile.write(b)
+    def sendj(self,code,obj,cache=None):
+        b=json.dumps(obj,ensure_ascii=False).encode();self.send_response(code);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Content-Length",str(len(b)));self.send_header("Cache-Control",cache or "no-store");self.end_headers();self.wfile.write(b)
     def cookies(self):
         from http.cookies import SimpleCookie
         c=SimpleCookie()
@@ -51,6 +55,8 @@ class App(BaseHTTPRequestHandler):
     def do_GET(self):
         path=unquote(urlparse(self.path).path)
         if path.startswith("/vendor/"):return self.send_static(path[1:])
+        if path=="/sw.js":
+            b=(Path(__file__).parent.parent/"ui"/"sw.js").read_bytes();self.send_response(200);self.send_header("Content-Type","text/javascript; charset=utf-8");self.send_header("Content-Length",str(len(b)));self.send_header("Cache-Control","no-cache");self.end_headers();self.wfile.write(b);return
         if path=="/api/location/ip":return self.sendj(200,online.ip_location())
         if path=="/api/geocode":
             try:return self.sendj(200,online.geocode(self.qs().get("q",[""])[0]))
@@ -80,7 +86,7 @@ class App(BaseHTTPRequestHandler):
             try:
                 q=self.qs();lat,lon=self.latlon(q)
             except Exception:return self.sendj(400,{"error":"Valid lat and lon query parameters are required."})
-            res=online.safe_zones(self.installed_regions(lat,lon),lat,lon,q.get("hazard",["Flood"])[0],q.get("mode",["foot"])[0],use_online=q.get("online",["1"])[0]!="0")
+            res=online.safe_zones(self.installed_regions(lat,lon),lat,lon,q.get("hazard",["Flood"])[0],q.get("mode",["foot"])[0],use_online=q.get("online",["1"])[0]!="0",radius_m=float(q.get("radius_m",["30000"])[0] or 30000))
             cc=q.get("cc",[""])[0];res["emergency_number"]=online.emergency_number(cc)
             return self.sendj(200,res)
         if path=="/api/emergency-number":return self.sendj(200,{"number":online.emergency_number(self.qs().get("cc",[""])[0])})
@@ -89,66 +95,32 @@ class App(BaseHTTPRequestHandler):
             s=self.auth.current(self.cookies().get("synapse_session"))
             return self.sendj(200,{"authenticated":bool(s),"user":s["user"] if s else None,"csrf":s["csrf"] if s else None})
         if path=="/api/catalog":
-            # Global Geofabrik extract catalogue. Cache after a successful online fetch.
-            cache_path=Path(self.data)/"global_region_catalog.json"
-            try:
-                req=urllib.request.Request("https://download.geofabrik.de/index-v1.json",
-                    headers={"User-Agent":"SYNAPSE-EARTH/1.0 (global regional map catalogue)"})
-                with urllib.request.urlopen(req,timeout=25) as r:
-                    index=json.loads(r.read(30_000_000))
-                items=[]
-                for f in index.get("features",[]):
-                    prop=f.get("properties") or {}; urls=prop.get("urls") or {}
-                    pbf=urls.get("pbf")
-                    if not pbf: continue
-                    if pbf.startswith("/"): pbf="https://download.geofabrik.de"+pbf
-                    if not pbf.startswith("https://download.geofabrik.de/"): continue
-                    geom=f.get("geometry") or {}; coords=[]
-                    def walk(v):
-                        if isinstance(v,(list,tuple)):
-                            if len(v)>=2 and isinstance(v[0],(int,float)) and isinstance(v[1],(int,float)):
-                                coords.append((float(v[0]),float(v[1])))
-                            else:
-                                for x in v: walk(x)
-                    walk(geom.get("coordinates",[]))
-                    if not coords: continue
-                    bbox=[min(x for x,y in coords),min(y for x,y in coords),
-                          max(x for x,y in coords),max(y for x,y in coords)]
-                    path_=re.sub(r"^https://download\.geofabrik\.de/|-latest\.osm\.pbf$","",pbf)
-                    rid=re.sub(r"[^a-z0-9_-]+","-",path_.lower()).strip("-")[:110]
-                    if not rid: continue
-                    parent_id=re.sub(r"[^a-z0-9_-]+","-",path_.rsplit("/",1)[0].lower()).strip("-") if "/" in path_ else ""
-                    parent=prop.get("parent")
-                    if isinstance(parent,dict): parent=parent.get("name") or parent.get("id")
-                    raw=prop.get("iso3166-1:alpha2") or prop.get("country") or ""
-                    if isinstance(raw,(list,tuple)): raw=raw[0] if raw else ""
-                    cc=re.sub(r"[^A-Za-z]","",str(raw)).upper()[:2]
-                    items.append({"id":rid,"name":str(prop.get("name") or "Unnamed region"),
-                        "pbf":pbf,"bbox":bbox,"parent":parent,"parent_id":parent_id,"country":cc,
-                        "level":"subregion" if parent else "country_or_region"})
-                byid={x["id"]:x for x in items}
-                for x in items:                      # inherit the country code from the nearest ancestor that has one
-                    cur=x;hops=0
-                    while not x["country"] and cur.get("parent_id") in byid and hops<6:
-                        cur=byid[cur["parent_id"]];x["country"]=cur["country"];hops+=1
-                parents={x["parent_id"] for x in items}
-                for x in items: x["leaf"]=x["id"] not in parents
-                unique={x["id"]:x for x in items}
-                items=sorted(unique.values(),key=lambda x:(x["country"],str(x.get("parent") or ""),x["name"].lower()))
-                payload={"source":"Geofabrik global OpenStreetMap extracts","regions":items,
-                    "count":len(items),"license":"OpenStreetMap ODbL",
-                    "scope_note":"Worldwide catalogue of extracts published by Geofabrik; availability and subdivision depth vary by country."}
-                cache_path.parent.mkdir(parents=True,exist_ok=True)
-                tmp=cache_path.with_suffix(".tmp");tmp.write_text(json.dumps(payload,ensure_ascii=False));tmp.replace(cache_path)
-                return self.sendj(200,payload)
+            # Cached on disk for 7 days (Geofabrik's index is several MB); only refreshed when stale or missing.
+            try:return self.sendj(200,get_catalog(self.data))
             except Exception as e:
-                try:
-                    cached=json.loads(cache_path.read_text());cached["cached"]=True
-                    cached["scope_note"]="Showing the last successfully downloaded Geofabrik catalogue. New regions require an internet connection."
-                    return self.sendj(200,cached)
-                except Exception:
-                    return self.sendj(503,{"error":"Global regional map catalogue unavailable: "+str(e),
-                        "hint":"Connect to the internet once to download and cache the worldwide extract catalogue. Installed packages continue working offline."})
+                return self.sendj(503,{"error":str(e),"hint":"Connect to the internet once to download and cache the worldwide extract catalogue. Installed packages continue working offline."})
+        if path=="/api/config":
+            return self.sendj(200,{"allow_install":App.allow_install,"prefetch_scope":App.prefetch_scope,"persistent_data":App.persistent,
+                "data_dir_note":"Regional maps are stored on the server once and reused; visitors' browsers only fetch small map tiles for the area on screen."})
+        if path.startswith("/api/region-info/"):
+            try:
+                pkg=get_region(self.data,path.rsplit("/",1)[1]);m=pkg["manifest"]
+                return self.sendj(200,{"manifest":m,"counts":{"nodes":len(pkg["nodes"]),"edges":len(pkg["edges"]),"places":len(pkg.get("places",[])),"facilities":len(pkg.get("facilities",[]))}},cache="public, max-age=300")
+            except Exception as e:return self.sendj(404,{"error":str(e)})
+        if path.startswith("/api/region-roads/"):
+            # Only the roads/places inside the visible map box are sent (never the whole regional package).
+            try:
+                q=self.qs();w,so,e,n=[float(x) for x in q["bbox"][0].split(",")];cap=min(int(q.get("max",["9000"])[0]),20000)
+                pkg=get_region(self.data,path.rsplit("/",1)[1]);_,nodes=_graph_for(pkg);lines=[]
+                for ed in pkg["edges"]:
+                    a_=nodes.get(ed["from"]);b_=nodes.get(ed["to"])
+                    if not a_ or not b_:continue
+                    if (a_["lon"]<w and b_["lon"]<w) or (a_["lon"]>e and b_["lon"]>e) or (a_["lat"]<so and b_["lat"]<so) or (a_["lat"]>n and b_["lat"]>n):continue
+                    lines.append([round(a_["lat"],5),round(a_["lon"],5),round(b_["lat"],5),round(b_["lon"],5)])
+                    if len(lines)>=cap:break
+                places=[{"name":p_["name"],"place_type":p_.get("place_type",""),"lat":p_["lat"],"lon":p_["lon"]} for p_ in pkg.get("places",[]) if w<=p_["lon"]<=e and so<=p_["lat"]<=n][:300]
+                return self.sendj(200,{"lines":lines,"places":places,"truncated":len(lines)>=cap},cache="public, max-age=3600")
+            except Exception as ex:return self.sendj(400,{"error":"bbox=west,south,east,north is required ("+str(ex)[:80]+")"})
         if path=="/api/location/reverse":
             try:
                 from urllib.parse import parse_qs
@@ -280,8 +252,10 @@ class App(BaseHTTPRequestHandler):
                         raise ValueError("Downloaded country boundary file failed validation")
                     p.parent.mkdir(parents=True,exist_ok=True)
                     tmp=p.with_suffix(".geojson.tmp");tmp.write_bytes(raw);tmp.replace(p)
-                b=p.read_bytes()
-                self.send_response(200);self.send_header("Content-Type","application/geo+json");self.send_header("Content-Length",str(len(b)));self.end_headers();self.wfile.write(b);return
+                b=p.read_bytes();etag='"'+hashlib.sha1(b).hexdigest()[:16]+'"'
+                if self.headers.get("If-None-Match")==etag:
+                    self.send_response(304);self.send_header("ETag",etag);self.send_header("Cache-Control","public, max-age=604800");self.end_headers();return
+                self.send_response(200);self.send_header("Content-Type","application/geo+json");self.send_header("Content-Length",str(len(b)));self.send_header("ETag",etag);self.send_header("Cache-Control","public, max-age=604800");self.end_headers();self.wfile.write(b);return
             except Exception as e:
                 return self.sendj(503,{"error":"World overview unavailable: "+str(e),"hint":"Run python3 scripts/download_world_map.py from the project root while online. The downloader now validates and atomically installs the file."})
         if path.startswith("/api/region/"):
@@ -323,6 +297,8 @@ class App(BaseHTTPRequestHandler):
             if path=="/api/route":
                 body=json.loads(raw);pkg=get_region(self.data,body["region_id"])
                 return self.sendj(200,shortest_path(pkg,float(body["start_lat"]),float(body["start_lon"]),float(body["end_lat"]),float(body["end_lon"]),body.get("closed_way_ids",[])))
+            if path in ("/api/regions/install","/api/regions/install-batch","/api/regions/install-cancel","/api/activate") and not App.allow_install:
+                return self.sendj(403,{"error":"Installing regional maps from the web page is disabled on this server. The site operator pre-installs maps once (see README_FIX_v17: scripts/prefetch_regions.py or SYNAPSE_PREFETCH). Set SYNAPSE_ALLOW_INSTALL=1 to enable."})
             if path=="/api/regions/install":
                 r=install_one(json.loads(raw),self.data)
                 return self.sendj(200,{"status":"installed","region_id":json.loads(raw).get("region_id"),"file":r.get("file"),"downloaded_bytes":r.get("downloaded_bytes"),"import_log":r.get("import_log")})
@@ -340,9 +316,24 @@ class App(BaseHTTPRequestHandler):
             return self.sendj(404,{"error":"not found"})
         except AuthError as e:return self.sendj(e.status,{"error":str(e)})
         except Exception as e:return self.sendj(400,{"error":str(e)})
+App.allow_install=True;App.prefetch_scope="";App.persistent=False
+def _truthy(v):return str(v).strip().lower() in ("1","true","yes","on")
 def main():
-    p=argparse.ArgumentParser();p.add_argument("--data",default="./data");p.add_argument("--host",default="127.0.0.1");p.add_argument("--port",type=int,default=8080);a=p.parse_args()
+    env=os.environ
+    p=argparse.ArgumentParser()
+    p.add_argument("--data",default=env.get("SYNAPSE_DATA","./data"))
+    p.add_argument("--host",default=env.get("HOST") or ("0.0.0.0" if env.get("PORT") else "127.0.0.1"))
+    p.add_argument("--port",type=int,default=int(env.get("PORT","8080")))
+    p.add_argument("--prefetch",default=env.get("SYNAPSE_PREFETCH",""),help="all | IN,US | id:asia-india-western-zone  (downloaded once in the background)")
+    p.add_argument("--prefetch-max-mb",type=int,default=int(env.get("SYNAPSE_PREFETCH_MAX_MB","300")))
+    a=p.parse_args()
     Path(a.data).mkdir(parents=True,exist_ok=True);App.data=a.data
+    # Installing from the web page is allowed on a local machine, but NOT on a public host unless the operator opts in:
+    # otherwise any visitor could make the server download and process multi-hundred-MB map files.
+    local=a.host in ("127.0.0.1","localhost","::1")
+    App.allow_install=_truthy(env["SYNAPSE_ALLOW_INSTALL"]) if "SYNAPSE_ALLOW_INSTALL" in env else local
+    App.persistent=_truthy(env.get("SYNAPSE_PERSISTENT","0"))
+    App.prefetch_scope=a.prefetch
     # Auto-activate checksum-validated packages generated into ./regions.
     package_dir=Path("./regions")
     if package_dir.is_dir():
@@ -352,8 +343,16 @@ def main():
                 print(f"Activated existing regional package: {activated.name}")
             except Exception as exc:
                 print(f"Skipped invalid regional package {package_file.name}: {exc}")
-    App.batch=BatchInstaller(a.data)
+    App.batch=BatchInstaller(a.data,on_item=lambda it:prefetch_mod.record(a.data,it))
     App.auth=AuthStore(Path(a.data)/"accounts.sqlite3")
-    print(f"SYNAPSE EARTH local server: http://{a.host}:{a.port}")
+    if a.prefetch:
+        def _bg():
+            try:
+                items=prefetch_mod.plan(a.data,a.prefetch,a.prefetch_max_mb)
+                print(f"[prefetch] scope={a.prefetch!r}: {len(items)} extract(s) still to download (already-installed ones are skipped).",flush=True)
+                if items:App.batch.start(items,a.prefetch_max_mb,True)
+            except Exception as exc:print("[prefetch] could not start:",exc,flush=True)
+        threading.Thread(target=_bg,daemon=True).start()
+    print(f"SYNAPSE EARTH server: http://{a.host}:{a.port}  (web installs {'enabled' if App.allow_install else 'disabled'})",flush=True)
     ThreadingHTTPServer((a.host,a.port),App).serve_forever()
 if __name__=="__main__":main()

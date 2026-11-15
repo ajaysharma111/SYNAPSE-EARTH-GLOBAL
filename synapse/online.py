@@ -90,7 +90,7 @@ def offline_candidates(regions, lat, lon, radius_m=30000):
             if not tier:
                 continue
             d = haversine({"lat": lat, "lon": lon}, f)
-            lim = radius_m if tier == "shelter" else min(radius_m, 10000)
+            lim = radius_m if tier == "shelter" else min(radius_m, max(10000, radius_m // 3))
             if d <= lim:
                 out.append({"id": "off-" + str(f.get("id")), "name": f.get("name") or "Unnamed " + TIER_LABELS[tier].lower(),
                             "tier": tier, "kind": f.get("type") or f.get("amenity") or f.get("emergency") or tier,
@@ -314,11 +314,11 @@ def route_one(c, lat, lon, mode, fetch=fetch_json, allow_online=True):
 
 
 # --------------------------------------------------------------------------- orchestration
-def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json, use_online=True):
+def _safe_zones_uncached(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json, use_online=True, radius_m=30000):
     hazard = hazard if hazard in HAZARDS else "Flood"
     mode = mode if mode in ROUTERS else "foot"
     notes, status = [], {"offline_data": False, "online_data": False}
-    cands = offline_candidates(regions, lat, lon)
+    cands = offline_candidates(regions, lat, lon, radius_m)
     status["offline_data"] = bool(cands)
     if use_online:
         on, why = [], None
@@ -391,13 +391,14 @@ _SAFEZONE_CACHE_TTL = 25.0
 _SAFEZONE_CACHE_MAX = 24
 
 
-def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json, use_online=True):
+def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json, use_online=True, radius_m=30000):
+    radius_m = max(1000, min(200000, int(radius_m)))
     region_key = tuple(
         (id(pkg), (meta or {}).get("region_id"), (pkg.get("manifest") or {}).get("generated_at"))
         for pkg, meta in regions
     )
     key = (round(float(lat), 5), round(float(lon), 5), hazard, mode,
-           bool(use_online), id(fetch), region_key)
+           bool(use_online), id(fetch), radius_m, region_key)
     now = time.monotonic()
     with _SAFEZONE_CACHE_LOCK:
         hit = _SAFEZONE_CACHE.get(key)
@@ -406,7 +407,7 @@ def safe_zones(regions, lat, lon, hazard="Flood", mode="foot", fetch=fetch_json,
         if hit:
             _SAFEZONE_CACHE.pop(key, None)
 
-    result = _safe_zones_uncached(regions, lat, lon, hazard, mode, fetch, use_online)
+    result = _safe_zones_uncached(regions, lat, lon, hazard, mode, fetch, use_online, radius_m)
     if result.get("status") == "OK":
         with _SAFEZONE_CACHE_LOCK:
             if len(_SAFEZONE_CACHE) >= _SAFEZONE_CACHE_MAX:

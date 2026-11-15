@@ -20,6 +20,18 @@ class EngineTests(unittest.TestCase):
   import synapse.engine as engine
   p=sample();a=engine._graph_for(p);b=engine._graph_for(p)
   self.assertIs(a[0],b[0]);self.assertIs(a[1],b[1])
+ def test_spatial_nearest_node_matches_full_scan(self):
+  import synapse.engine as engine
+  p=sample()
+  for lat,lon in [(0.0001,0.0002),(0.004,0.009),(0.009,0.009)]:
+   actual,distance=engine.nearest_node(p,lat,lon)
+   expected=min(p["nodes"],key=lambda n:engine.haversine({"lat":lat,"lon":lon},n))
+   self.assertEqual(actual["id"],expected["id"])
+   self.assertAlmostEqual(distance,engine.haversine({"lat":lat,"lon":lon},expected),places=6)
+ def test_spatial_index_reused(self):
+  import synapse.engine as engine
+  p=sample();a=engine._spatial_index(p);b=engine._spatial_index(p)
+  self.assertIs(a,b)
  def test_missing_route(self):
   p=sample();p["edges"]=[];self.assertEqual(shortest_path(p,0,0,0,0.01)["status"],"NO_ROAD_DATA")
  def test_route_rejects_invalid_coordinates(self):

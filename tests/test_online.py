@@ -49,6 +49,16 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(r["user_elevation_m"], 10)
         self.assertTrue(any("higher ground" in n for n in d["notes"]))
         self.assertIn("NOT verified", d["verification"])
+    def test_valid_empty_overpass_does_not_run_slow_nominatim_fallback(self):
+        calls=[]
+        def empty_overpass(url, data=None, timeout=0, headers=None):
+            calls.append(url)
+            if "overpass" in url: return {"elements":[]}
+            raise AssertionError("Nominatim must not run after a valid empty Overpass response")
+        r=safe_zones([], 21.18581, 72.86337, "Earthquake", "foot", fetch=empty_overpass)
+        self.assertEqual(r["status"], "NO_MAPPED_SAFE_ZONES")
+        self.assertFalse(any("nominatim" in x for x in calls))
+
     def test_overpass_down_falls_back_to_nominatim(self):
         def f(url, data=None, timeout=0, headers=None):
             if "overpass" in url: raise OSError("504")

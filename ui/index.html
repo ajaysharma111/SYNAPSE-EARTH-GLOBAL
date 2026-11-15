@@ -384,11 +384,28 @@ map.createPane('offlineWorld').style.zIndex=150;
 map.createPane('zones').style.zIndex=650;map.createPane('bubble').style.zIndex=720;
 const attrOSM='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const attrEsri='Tiles © Esri — Source: Esri, HERE, Garmin, OpenStreetMap contributors';
+/* Tile layer that never leaves a hole: if a tile can't be loaded (offline, or never visited), it is rebuilt by enlarging the
+   nearest saved lower-zoom tile (served from the service-worker cache). */
+const FBTile=L.TileLayer.extend({
+  createTile(coords,done){
+    const box=document.createElement('div');box.style.cssText='width:256px;height:256px';
+    const img=document.createElement('img');img.alt='';img.style.cssText='width:100%;height:100%;display:block';box.appendChild(img);
+    img.onload=()=>done(null,box);
+    img.onerror=()=>{let k=1;const tryK=()=>{
+      const z=coords.z-k;if(k>5||z<0)return done(new Error('tile unavailable'),box);
+      const pc={x:coords.x>>k,y:coords.y>>k,z},im=new Image();
+      im.onload=()=>{const cv=document.createElement('canvas');cv.width=cv.height=256;const sz=256>>k;
+        cv.getContext('2d').drawImage(im,(coords.x-(pc.x<<k))*sz,(coords.y-(pc.y<<k))*sz,sz,sz,0,0,256,256);
+        cv.style.cssText='width:100%;height:100%;display:block';img.replaceWith(cv);done(null,box)};
+      im.onerror=()=>{k++;tryK()};im.src=L.Util.template(this._url,{x:pc.x,y:pc.y,z:pc.z})};tryK()};
+    img.src=this.getTileUrl(coords);return box;
+  }
+});
 const bases={
-  'Streets':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:attrOSM}),
-  'Esri streets':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:attrEsri}),
-  'Satellite':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles © Esri — Esri, Maxar, Earthstar Geographics'}),
-  'Dark gray':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:16,attribution:attrEsri}),
+  'Streets':new FBTile('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:attrOSM}),
+  'Esri streets':new FBTile('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:attrEsri}),
+  'Satellite':new FBTile('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles © Esri — Esri, Maxar, Earthstar Geographics'}),
+  'Dark gray':new FBTile('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:16,attribution:attrEsri}),
 };
 const countryLayer=L.layerGroup().addTo(map);       // offline country boundaries (always works)
 const roadLayer=L.layerGroup().addTo(map);          // installed regional roads + settlements
@@ -411,20 +428,39 @@ map.on('baselayerchange',e=>{activeBase=e.layer;store.set('synapse.base2',e.name
 function updateTileChip(){
   const c=$('tileChip'),l=$('tileLabel');
   if(!activeBase){c.className='chip glass';l.textContent='OFFLINE VECTOR MAP';return}
-  if(tileBad>=4&&tileOK===0){c.className='chip glass warn';l.textContent='TILES UNREACHABLE · OFFLINE VECTOR MAP';if(!updateTileChip.warned){updateTileChip.warned=1;toast('Online map tiles are unreachable. Showing the offline country map; routing and shelters from installed data still work.','',7000)}return}
+  if(tileBad>=4&&tileOK===0){c.className='chip glass warn';l.textContent='NO SAVED TILES HERE · OFFLINE VECTOR MAP';if(!updateTileChip.warned){updateTileChip.warned=1;toast('Street tiles for this area are not saved on this device, so the offline country map and grid are shown. Open the map once while online and the area is kept for offline use.','',8000)}return}
   c.className='chip glass ok';l.textContent='ONLINE TILES';
 }
 // Restore a valid saved basemap. An empty saved value means the app was
 // previously offline; when online, prefer Streets instead of remaining blank.
 let savedBase=store.get('synapse.base2',null);
 if(typeof savedBase!=='string'||!savedBase.trim()||!bases[savedBase])savedBase=null;
-setBase(navigator.onLine?(savedBase||'Streets'):'');
+setBase(savedBase||'Streets');
 /* keep Leaflet's idea of the container size in sync (otherwise tiles only cover the old size and the rest of the map goes blank) */
 try{const mo=new ResizeObserver(()=>map.invalidateSize({animate:false}));mo.observe($('map'))}catch(e){}
 window.addEventListener('resize',()=>map.invalidateSize({animate:false}));
 setTimeout(()=>map.invalidateSize({animate:false}),400);setTimeout(()=>map.invalidateSize({animate:false}),1800);
 
 
+/* ---- offline reference grid: keeps something visible and measurable even with no tiles at all ---- */
+const gridLayer=L.layerGroup().addTo(map);
+function drawGrid(){
+  gridLayer.clearLayers();const z=map.getZoom(),step=z<4?30:z<6?10:z<8?5:z<10?1:z<12?.25:z<14?.05:.01,b=map.getBounds().pad(.1);
+  for(let x=Math.floor(b.getWest()/step)*step;x<=b.getEast();x+=step)L.polyline([[b.getSouth(),x],[b.getNorth(),x]],{pane:'offlineWorld',color:'#5f89a1',weight:.6,opacity:.35,interactive:false}).addTo(gridLayer);
+  for(let y=Math.floor(b.getSouth()/step)*step;y<=b.getNorth();y+=step)L.polyline([[y,b.getWest()],[y,b.getEast()]],{pane:'offlineWorld',color:'#5f89a1',weight:.6,opacity:.35,interactive:false}).addTo(gridLayer);
+}
+map.on('moveend zoomend',drawGrid);drawGrid();
+/* save a small set of tiles around the user while online so the same area still shows a real map offline */
+async function saveTilesAround(lat,lon){
+  try{if(!navigator.onLine||!activeBase||!('serviceWorker' in navigator))return;
+    const key='synapse.tiles.'+lat.toFixed(2)+','+lon.toFixed(2);if(store.get(key,'')==='1')return;
+    const urls=[],tpl=activeBase._url;
+    for(let z=5;z<=16;z++){const n=2**z,x=Math.floor((lon+180)/360*n),y=Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n),r=z<12?0:z<14?1:z<16?2:1;
+      for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++)urls.push(L.Util.template(tpl,{x:x+dx,y:y+dy,z}))}
+    let i=0;const worker=async()=>{while(i<urls.length){const u=urls[i++];try{await fetch(u,{mode:'no-cors'})}catch(e){}}};
+    await Promise.all([worker(),worker(),worker(),worker()]);store.set(key,'1');
+  }catch(e){}
+}
 /* ---- world countries (offline GeoJSON) ---- */
 const nm=f=>f.properties.ADMIN||f.properties.NAME||f.properties.name||'Unknown';
 function ringHas(r,x,y){let ins=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])ins=!ins}return ins}
@@ -598,7 +634,7 @@ async function maybeAutoInstallRegion(lat,lon){
 }
 
 async function applyLocation({lat,lon,accuracy=0,source='gps',place='',cc=''}){
-  S.loc={lat,lon,accuracy,source};
+  S.loc={lat,lon,accuracy,source};setTimeout(()=>saveTilesAround(lat,lon),3000);
   const approx=source==='ip';
   $('cLat').textContent=lat.toFixed(5);$('cLon').textContent=lon.toFixed(5);
   $('cAcc').textContent=source==='map'||source==='manual'?'set by you':'±'+(accuracy>=1000?(accuracy/1000).toFixed(0)+' km':Math.round(accuracy)+' m');

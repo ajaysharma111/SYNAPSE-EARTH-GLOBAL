@@ -227,16 +227,10 @@ class App(BaseHTTPRequestHandler):
                     if not bb or not (bb[0]<=lon<=bb[2] and bb[1]<=lat<=bb[3]):continue
                     rp=get_region(self.data,meta["region_id"])
                     for f in rp.get("facilities",[]):
-                        typ=str(f.get("type","")).lower()
-                        emergency=str(f.get("emergency","")).lower()
-                        shelter=str(f.get("shelter","")).lower()
-                        amenity=str(f.get("amenity","")).lower()
-                        # Only explicitly tagged shelter/assembly-point records qualify as shelter candidates.
-                        is_shelter=(typ in ("shelter","emergency_shelter") or
-                            emergency in ("shelter","assembly_point","emergency_shelter") or
-                            shelter not in ("","no","false","0") or
-                            amenity in ("shelter","evacuation_centre","evacuation_center"))
-                        if not is_shelter:continue
+                        # Share the strict OSM shelter classifier used by the main safe-zone
+                        # workflow. In particular, a generic shelter=yes tag must not turn a
+                        # bus-stop shelter into an emergency evacuation destination.
+                        if online.classify(online.facility_to_tags(f)) != "shelter":continue
                         d=haversine({"lat":lat,"lon":lon},f)
                         if d<=radius:candidates.append((d,f,rp,meta))
                 except Exception:continue

@@ -300,17 +300,23 @@ def straight_line_route(lat, lon, dlat, dlon, reason=""):
 
 def route_one(c, lat, lon, mode, fetch=fetch_json, allow_online=True):
     pkg = c.get("_pkg")
+    offline_reason = None
     if pkg is not None:
         r = shortest_path(pkg, lat, lon, c["lat"], c["lon"])
-        if r.get("status") == "CANDIDATE_ROUTE" and r["snap_start_m"] < 1500 and r["snap_end_m"] < 1500:
+        if r.get("status") == "CANDIDATE_ROUTE":
             r["source"] = "installed offline road graph"; r["mode"] = "offline"
             return r
+        offline_reason = r.get("message") or "The installed offline road graph could not connect these points."
     if allow_online:
         r = route_online(lat, lon, c["lat"], c["lon"], mode, fetch)
         if r["status"] == "CANDIDATE_ROUTE":
             return r
-        return straight_line_route(lat, lon, c["lat"], c["lon"], r.get("message", ""))
-    return straight_line_route(lat, lon, c["lat"], c["lon"], "offline and no installed road graph covers this route")
+        reason = r.get("message", "")
+        if offline_reason:
+            reason = offline_reason + " Online routing also failed: " + reason
+        return straight_line_route(lat, lon, c["lat"], c["lon"], reason)
+    reason = offline_reason or "No installed road graph covers this route"
+    return straight_line_route(lat, lon, c["lat"], c["lon"], reason)
 
 
 # --------------------------------------------------------------------------- orchestration

@@ -32,6 +32,13 @@ class EngineTests(unittest.TestCase):
   import synapse.engine as engine
   p=sample();a=engine._spatial_index(p);b=engine._spatial_index(p)
   self.assertIs(a,b)
+ def test_spatial_lookup_far_outside_region_terminates_and_is_exact(self):
+  import synapse.engine as engine
+  p=sample()
+  actual,distance=engine.nearest_node(p,45,90)
+  expected=min(p["nodes"],key=lambda n:engine.haversine({"lat":45,"lon":90},n))
+  self.assertEqual(actual["id"],expected["id"])
+  self.assertAlmostEqual(distance,engine.haversine({"lat":45,"lon":90},expected),places=6)
  def test_missing_route(self):
   p=sample();p["edges"]=[];self.assertEqual(shortest_path(p,0,0,0,0.01)["status"],"NO_ROAD_DATA")
  def test_route_rejects_invalid_coordinates(self):

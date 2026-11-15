@@ -178,23 +178,15 @@ def shortest_path(pkg,start_lat,start_lon,end_lat,end_lon,closed_way_ids=None):
     adj,nodes=_graph_for(pkg)
     closed=set(str(x) for x in (closed_way_ids or []))
 
-    # A* uses straight-line distance as an admissible lower-bound heuristic.
-    # OSM edge lengths are physical road distances, so this never overestimates
-    # the remaining path length and preserves shortest-path correctness.
-    # Cache heuristic values: A* may revisit the same node through several
-    # improved paths, and the destination is fixed for this search.
-    heuristic_cache={}
-    def heuristic(node_id):
-        value=heuristic_cache.get(node_id)
-        if value is None:
-            value=haversine(nodes[node_id],end)
-            heuristic_cache[node_id]=value
-        return value
-
-    q=[(heuristic(start["id"]),0.0,start["id"])]
+    # Use Dijkstra on the imported road-segment weights. Unlike A*, it does
+    # not depend on geographic distance being a lower bound for every edge.
+    # This matters for clipped extracts, simplified graphs and third-party
+    # packages whose stored edge lengths may not match straight-line geometry.
+    # The first time the destination is popped, its road distance is optimal.
+    q=[(0.0,start["id"])]
     dist={start["id"]:0.0};prev={}
     while q:
-        _,d,u=heapq.heappop(q)
+        d,u=heapq.heappop(q)
         if d!=dist.get(u):
             continue
         if u==end["id"]:
@@ -205,7 +197,7 @@ def shortest_path(pkg,start_lat,start_lon,end_lat,end_lon,closed_way_ids=None):
             nd=d+w
             if nd<dist.get(v,float("inf")):
                 dist[v]=nd;prev[v]=(u,e)
-                heapq.heappush(q,(nd+heuristic(v),nd,v))
+                heapq.heappush(q,(nd,v))
     if end["id"] not in dist:
         return {"status":"NO_CONNECTED_ROUTE","message":"No connected route exists in the installed graph. No route was invented."}
     ids=[end["id"]];ways=[];cur=end["id"]

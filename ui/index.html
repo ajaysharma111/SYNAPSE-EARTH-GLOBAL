@@ -651,7 +651,7 @@ async function findSafeZones(auto=false){
   list.innerHTML='';for(let i=0;i<3;i++)list.append(el('div','skeleton'));
   let j;
   const offlineOnly=S.forceOffline||!navigator.onLine;
-  try{j=await api('/api/safezones?lat='+S.loc.lat+'&lon='+S.loc.lon+'&hazard='+encodeURIComponent($('kind').value)+'&mode='+S.mode+'&cc='+encodeURIComponent(S.cc)+'&online='+(offlineOnly?'0':'1'),{},offlineOnly?30000:90000)}
+  try{j=await api('/api/safezones?lat='+S.loc.lat+'&lon='+S.loc.lon+'&hazard='+encodeURIComponent($('kind').value)+'&mode='+S.mode+'&cc='+encodeURIComponent(S.cc)+'&online='+(offlineOnly?'0':'1'),{},offlineOnly?15000:60000)}
   catch(e){if(tok!==zoneToken)return;list.innerHTML='';out.textContent='Could not calculate safer zones: '+e.message;btn.disabled=false;return}
   if(tok!==zoneToken)return;
   btn.disabled=false;list.innerHTML='';

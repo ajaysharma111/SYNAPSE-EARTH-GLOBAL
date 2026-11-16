@@ -1,3 +1,4 @@
+from . import freshness
 import argparse,json,hashlib,hmac,urllib.request,urllib.parse,subprocess,sys,tempfile,os,re
 from pathlib import Path
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
@@ -99,8 +100,15 @@ class App(BaseHTTPRequestHandler):
             try:return self.sendj(200,get_catalog(self.data))
             except Exception as e:
                 return self.sendj(503,{"error":str(e),"hint":"Connect to the internet once to download and cache the worldwide extract catalogue. Installed packages continue working offline."})
+        if path=="/api/verify-place":
+            q=self.qs()
+            if not freshness.enabled():return self.sendj(200,{"configured":False,"status":"unknown","summary":"Live checking is not configured on this server."})
+            if not freshness.rate_ok(self.client_address[0]):return self.sendj(429,{"error":"Too many live checks; wait a minute."})
+            try:return self.sendj(200,freshness.verify_place(q.get("name",[""])[0],q.get("near",[""])[0]))
+            except ValueError as e:return self.sendj(400,{"error":str(e)})
+            except Exception as e:return self.sendj(502,{"error":"Live check failed: "+str(e)[:160]})
         if path=="/api/config":
-            return self.sendj(200,{"allow_install":App.allow_install,"prefetch_scope":App.prefetch_scope,"persistent_data":App.persistent,
+            return self.sendj(200,{"verify_enabled":freshness.enabled(),"allow_install":App.allow_install,"prefetch_scope":App.prefetch_scope,"persistent_data":App.persistent,
                 "data_dir_note":"Regional maps are stored on the server once and reused; visitors' browsers only fetch small map tiles for the area on screen."})
         if path.startswith("/api/region-info/"):
             try:

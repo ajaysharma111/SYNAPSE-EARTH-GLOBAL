@@ -299,7 +299,7 @@ label.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:.8px;color
     <div class="nav-dest" id="navDest"></div>
     <button class="btn sm" id="navNext" type="button" hidden style="margin-top:8px;width:100%">Find next safer zone from here</button>
   </div>
-  <div class="mapui glass map-info"><b id="infoTitle">World overview</b><small id="infoSub">Click a country to inspect it, or detect your location to find safer zones.</small><div id="infoEta" class="dir-eta" hidden></div><div class="dir-actions"><button class="btn sm" id="navStart" type="button" hidden>▶ Start</button><button class="btn alt sm" id="infoStepsBtn" type="button" hidden>Show directions</button></div><ol id="infoSteps" class="dir-steps" hidden></ol></div>
+  <div class="mapui glass map-info"><b id="infoTitle">World overview</b><small id="infoSub">Click a country to inspect it, or detect your location to find safer zones.</small><div id="infoEta" class="dir-eta" hidden></div><div class="dir-actions"><button class="btn sm" id="navStart" type="button" hidden>▶ Start</button><button class="btn alt sm" id="infoStepsBtn" type="button" hidden>Show directions</button><button class="btn alt sm" id="infoVerifyBtn" type="button" hidden>Check if still open (live)</button></div><div id="infoVerify" class="hint" hidden></div><ol id="infoSteps" class="dir-steps" hidden></ol></div>
   <div class="mapui map-btns">
     <button class="btn alt" id="btnMe" type="button" title="Centre on my location" aria-label="Centre on my location">◎</button>
     <button class="btn alt" id="btnWorld" type="button" title="Whole world" aria-label="Show whole world">🌍</button>
@@ -992,7 +992,7 @@ function selectZone(i,fly){
   const eta=$('infoEta');eta.hidden=false;eta.innerHTML='';eta.append(el('strong',null,fmtDur(etaSeconds(z))),el('span',null,'('+fmtDist(z.route.distance_m||z.straight_line_m)+(road?'':' straight-line')+') · '+(S.mode==='foot'?'🚶 walking':'🚗 driving')));
   const steps=$('infoSteps'),sb=$('infoStepsBtn');steps.innerHTML='';steps.hidden=true;sb.textContent='Show directions';
   const list=(z.route.steps||[]);
-  sb.hidden=false;$('navStart').hidden=false;
+  sb.hidden=false;$('navStart').hidden=false;$('infoVerifyBtn').hidden=!S.verifyEnabled;$('infoVerify').hidden=true;
   steps.append(...(list.length?list.slice(0,30).map(x=>el('li',null,x.text+(x.distance_m?' ('+fmtDist(x.distance_m)+')':''))):[el('li',null,road?'Follow '+((z.route.road_names||[]).slice(0,4).join(' → ')||'the highlighted road')+'.':'No road route: head '+(z.route.bearing||'toward the marker')+' (direct line).')]));
 }
 function zoneDetail(z){
@@ -1027,6 +1027,17 @@ function markZoneUnavailable(id){
 }
 
 bind('autoEvacuate','click',()=>findSafeZones(false));
+bind('infoVerifyBtn','click',async()=>{
+  const z=S.zones[S.sel];if(!z)return;const box=$('infoVerify');box.hidden=false;box.textContent='Searching recent news and web pages…';
+  try{const j=await api('/api/verify-place?name='+encodeURIComponent(z.name)+'&near='+encodeURIComponent(((document.getElementById('placeName')||{}).textContent||'').slice(0,80)),{},45000);
+    box.replaceChildren();
+    const st={open:'✅ Recent sources suggest it is open',closed:'⛔ Recent sources say it is closed',damaged:'⚠️ Recent sources report damage',unknown:'❔ Status unknown'}[j.status]||'❔ Status unknown';
+    box.append(el('b',null,st+(j.confidence?' ('+Math.round(j.confidence*100)+'% confidence)':'')),el('div',null,j.summary||''));
+    (j.sources||[]).forEach(s=>{const a=el('a',null,s.title||s.url);a.href=s.url;a.target='_blank';a.rel='noopener';const d=el('div');d.append(a,s.date?' ('+s.date+')':'');box.append(d)});
+    if(j.disclaimer)box.append(el('small',null,j.disclaimer));
+    if(j.status==='closed'||j.status==='damaged'){S.unavailable.add(z.id)}
+  }catch(e){box.textContent='Live check failed: '+(e.message||e)}
+});
 bind('infoStepsBtn','click',()=>{const o=$('infoSteps');o.hidden=!o.hidden;$('infoStepsBtn').textContent=o.hidden?'Show directions':'Hide directions'});
 
 /* ============================== REGIONS / CATALOGUE ============================== */
@@ -1307,10 +1318,10 @@ matchMedia('(max-width:1240px)').addEventListener('change',rightToggle);rightTog
 window.addEventListener('resize',()=>map.invalidateSize());
 
 /* ============================== BOOT ============================== */
-S.allowInstall=true;
+S.verifyEnabled=false;S.allowInstall=true;
 async function loadConfig(){
   try{
-    const c=await api('/api/config',{},8000);S.allowInstall=!!c.allow_install;
+    const c=await api('/api/config',{},8000);S.verifyEnabled=!!c.verify_enabled;S.allowInstall=!!c.allow_install;
     if(!S.allowInstall){$('installTools').hidden=true;$('installNote').hidden=false;const ar=$('autoRegion');if(ar&&ar.parentElement)ar.parentElement.hidden=true;
       $('catalogStatus').textContent='Regional maps are pre-installed on the server.'}
     if(c.prefetch_scope)watchPrefetch();

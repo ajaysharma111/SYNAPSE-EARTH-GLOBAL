@@ -15,6 +15,12 @@ services:
         value: IN
       - key: SYNAPSE_PREFETCH_MAX_MB
         value: "150"
+      - key: TAVILY_API_KEY          # optional: enables the live freshness check
+        sync: false
+      - key: BIFROST_URL            # optional: AI judge through a Bifrost gateway
+        sync: false
+      - key: BIFROST_MODELS
+        sync: false
       - key: SYNAPSE_ALLOW_INSTALL   # visitors cannot trigger downloads
         value: "0"
 # Free Render disk is wiped on each deploy, so very large worlds will not fit/persist. For permanent storage attach

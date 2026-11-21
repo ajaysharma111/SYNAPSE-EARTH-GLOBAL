@@ -7,6 +7,7 @@ Live demo (Render): https://synapse-earth-global.onrender.com
 ## Features
 - **Location**: GPS, approximate (IP), click on map, or type a place / `lat, lon`. Works worldwide.
 - **Safer-zone search (~30 s cap)**: near (8 km) and wide (25 km) OpenStreetMap searches run in parallel; first results appear in seconds. If nothing safe is within 10 km it widens to ~80 km and says how far the nearest one is.
+- **Fast repeat searches**: first results are drawn about 1 s after the first OpenStreetMap reply (straight lines, then road routes replace them as they arrive). Place lookups and road routes are remembered for 15 minutes, so switching walk/drive or changing the hazard re-ranks instantly without asking the network again. Connections to the map services are opened early. Ranking and results are unchanged.
 - **Shortest + safest ranking**: cost = real travel time x safety factor (shelter 1.0, hospital 1.2, community building 1.3, hazard-aware: flood/cyclone prefer higher ground, earthquake prefers open assembly points). Cards show **Best balance / Shortest / Safest** badges. Up to 30 zones listed and mapped.
 - **Routes**: installed offline road graph first, then online OSRM (foot / car), then a clearly marked straight line.
 - **Start navigation**: live remaining distance, ETA, next turn, off-route re-routing, voice, wake lock. On arrival, **Find next safer zone from here** searches again from that point.

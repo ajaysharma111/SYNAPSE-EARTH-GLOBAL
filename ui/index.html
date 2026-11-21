@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://overpass-api.de" crossorigin><link rel="preconnect" href="https://routing.openstreetmap.de" crossorigin>
+<link rel="preconnect" href="https://api.open-meteo.com" crossorigin><link rel="preconnect" href="https://router.project-osrm.org" crossorigin>
+<link rel="dns-prefetch" href="https://overpass.private.coffee"><link rel="dns-prefetch" href="https://overpass.kumi.systems"><link rel="dns-prefetch" href="https://overpass.openstreetmap.fr"><link rel="dns-prefetch" href="https://nominatim.openstreetmap.org">
 <title>SYNAPSE EARTH | Global Emergency Intelligence</title>
 <link rel="stylesheet" href="/vendor/leaflet.css">
 <style>
@@ -754,7 +757,7 @@ function classify(t){
 }
 function overpassQ(lat,lon,rs,ro,to){
   const a=`(around:${rs},${lat.toFixed(6)},${lon.toFixed(6)})`,b=`(around:${ro},${lat.toFixed(6)},${lon.toFixed(6)})`;
-  return `[out:json][timeout:${to}];(nwr${a}["emergency"~"^(assembly_point|shelter|emergency_shelter)$"];nwr${a}["amenity"~"^(evacuation_centre|evacuation_center)$"];nwr${a}["amenity"="shelter"]["shelter_type"!~"^(picnic_shelter|weather_shelter|public_transport|basic_hut|lean_to|gazebo|rock_shelter)$"]["public_transport"!~"."]["highway"!~"."];)->.s;(nwr${b}["amenity"~"^(hospital|clinic)$"];nwr${b}["healthcare"~"^(hospital|clinic)$"];nwr${b}["amenity"~"^(community_centre|townhall|fire_station)$"];)->.o;.s out tags center 120;.o out tags center 120;`;
+  return `[out:json][timeout:${to}];(nwr${a}["emergency"~"^(assembly_point|shelter|emergency_shelter)$"];nwr${a}["amenity"~"^(evacuation_centre|evacuation_center)$"];nwr${a}["amenity"="shelter"]["shelter_type"!~"^(picnic_shelter|weather_shelter|public_transport|basic_hut|lean_to|gazebo|rock_shelter)$"]["public_transport"!~"."]["highway"!~"."];)->.s;(nwr${b}["amenity"~"^(hospital|clinic)$"];nwr${b}["healthcare"~"^(hospital|clinic)$"];nwr${b}["amenity"~"^(community_centre|townhall|fire_station)$"];)->.o;.s out tags center qt 120;.o out tags center qt 120;`;
 }
 async function overpassCandidates(lat,lon,rs,ro,to,signal){
   const q=overpassQ(lat,lon,rs,ro,to);
@@ -808,6 +811,20 @@ async function routeOnline(a,b,mode,signal){
 function straightRoute(a,b,why){const d=Math.round(hav(a.lat,a.lon,b.lat,b.lon));
   return {status:'STRAIGHT_LINE_ONLY',source:'straight-line bearing (no road data)',distance_m:d,coordinates:[[a.lon,a.lat],[b.lon,b.lat]],road_names:[],steps:[],bearing:bearingTxt(a.lat,a.lon,b.lat,b.lon),
     warning:'No road route could be calculated'+(why?': '+why:'')+'. The dashed line is a direct bearing only and may cross water, barriers or hazards.'}}
+/* Speed caches (15 min): the same place/mode/hazard re-search, or switching walk<->drive, reuses answers instead of asking the network again. */
+const RC=new Map(),OC=new Map(),CACHE_MS=900000;
+function routeCached(a,b,mode){
+  const k=[a.lat.toFixed(4),a.lon.toFixed(4),(+b.lat).toFixed(5),(+b.lon).toFixed(5),mode].join('|'),h=RC.get(k);
+  if(h&&Date.now()-h.t<CACHE_MS)return h.p;
+  const p=routeOnline(a,b,mode).then(r=>r,e=>{RC.delete(k);return straightRoute(a,b,e&&e.message)});
+  RC.set(k,{t:Date.now(),p});if(RC.size>150)RC.delete(RC.keys().next().value);return p;
+}
+function routePeek(a,b,mode){const h=RC.get([a.lat.toFixed(4),a.lon.toFixed(4),(+b.lat).toFixed(5),(+b.lon).toFixed(5),mode].join('|'));return h&&Date.now()-h.t<CACHE_MS?h.p:null}
+function overpassCached(lat,lon,rs,ro,to,signal){
+  const k=[lat.toFixed(3),lon.toFixed(3),rs,ro].join('|'),h=OC.get(k);
+  if(h&&Date.now()-h.t<CACHE_MS)return h.p.then(l=>l.map(c=>({...c,straight_line_m:Math.round(hav(lat,lon,c.lat,c.lon))})));
+  const p=overpassCandidates(lat,lon,rs,ro,to,signal);OC.set(k,{t:Date.now(),p});p.catch(()=>OC.delete(k));if(OC.size>20)OC.delete(OC.keys().next().value);return p;
+}
 async function routeAny(a,b,mode,signal){try{return await routeOnline(a,b,mode,signal)}catch(e){return straightRoute(a,b,e&&e.message)}}
 
 /* progressive search: quick small-radius pass first, widen only if needed; the whole thing is capped at 35 s */
@@ -829,7 +846,7 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
     return {ok:d.length>0,notes:['You are offline — showing installed offline maps'+(d.length?' and places saved on this device from earlier online searches (direct-line distances).':'. Nothing is saved for this area yet; search once while online, or install a regional map.')]};
   }
   const budget=new AbortController(),timer=setTimeout(()=>budget.abort(),35000),notes=[];   // hard cap: 35 s
-  const routed=new Map();let userElev=null,elev={},all=[],elevP=null;
+  let userElev=null,elev={},all=[],elevP=null,firstShown=false;
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const addAll=l=>{const ids=new Set(all.map(c=>c.id));(l||[]).forEach(c=>{if(!ids.has(c.id)){ids.add(c.id);all.push(c)}})};
   const emit=async(label)=>{
@@ -838,14 +855,26 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
       const pts=cands.slice(0,99);
       elevP=fetchElevations([[lat,lon],...pts.map(c=>[c.lat,c.lon])],budget.signal).then(ev=>{if(ev){userElev=ev[0];pts.forEach((c,i)=>{elev[c.id]=ev[i+1]})}})}
     if(elevP&&userElev==null)await Promise.race([elevP,sleep(2000)]);     // never wait long for elevation
-    const chosen=pickC(cands,hazard,userElev,elev);
-    await Promise.all(chosen.map(async(c,i)=>{const k=c.id+'|'+mode;if(i<14&&!routed.has(k))routed.set(k,routeAny({lat,lon},c,mode,budget.signal));c.route=routed.has(k)?await routed.get(k):straightRoute({lat,lon},c,'not routed yet')}));
+    const chosen=pickC(cands,hazard,userElev,elev),here={lat,lon};
+    const push=lb=>{if(tok===zoneToken)onUpdate({dests:chosen.map(c=>({...c,route:c.route})),notes:[...notes],userElev,label:lb})};
+    // 1) instant first paint: remembered routes where we have them, straight lines otherwise
+    chosen.forEach(c=>{c.route=null});
+    await Promise.all(chosen.map(async c=>{const h=routePeek(here,c,mode);c.route=h?await h:straightRoute(here,c,'route loading')}));
     if(tok!==zoneToken)return;
-    onUpdate({dests:chosen,notes:[...notes],userElev,label});
+    if(!firstShown){firstShown=true;push('nearby')}
+    // 2) ask for every road route at once (as before), but refresh the list as soon as the closest six are in
+    const pending=chosen.slice(0,14).filter(c=>c.route.status!=='CANDIDATE_ROUTE').map(c=>routeCached(here,c,mode).then(r=>{c.route=r}));
+    if(pending.length){
+      const early=Promise.all(chosen.slice(0,6).filter(c=>c.route.status!=='CANDIDATE_ROUTE').map(c=>routeCached(here,c,mode).then(r=>{c.route=r})));
+      if(chosen.length>6)early.then(()=>push('refining'));
+      await Promise.all(pending);
+      if(tok!==zoneToken)return;
+    }
+    push(label);
   };
   try{
     // near and wide passes start AT THE SAME TIME; near results are shown the moment they arrive
-    const A=overpassCandidates(lat,lon,8000,6000,8,budget.signal),B=overpassCandidates(lat,lon,25000,12000,14,budget.signal);
+    const A=overpassCached(lat,lon,8000,6000,8,budget.signal),B=overpassCached(lat,lon,25000,12000,14,budget.signal);
     A.catch(()=>{});B.catch(()=>{});
     let a=null,b=null,why='';
     try{a=await A}catch(e){why=e&&e.message}
@@ -856,7 +885,7 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
       try{addAll(await nominatimCandidates(lat,lon,budget.signal));notes.push('Main OpenStreetMap shelter service was unreachable, so results come from a slower fallback search and may be less complete.');await emit('wide')}
       catch(e2){notes.push('Online shelter search failed: '+why+' | fallback: '+(e2&&e2.message))}
     }else if(tok===zoneToken&&!dedupeC(all).some(c=>c.tier==='shelter'&&hav(lat,lon,c.lat,c.lon)<10000)){
-      try{addAll(await overpassCandidates(lat,lon,80000,30000,20,budget.signal));if(all.length)notes.push('No shelter was found close to you, so the search was widened to about 80 km.');await emit('far')}
+      try{addAll(await overpassCached(lat,lon,80000,30000,20,budget.signal));if(all.length)notes.push('No shelter was found close to you, so the search was widened to about 80 km.');await emit('far')}
       catch(e){if(!all.length)notes.push('Wide-area shelter search failed: '+(e&&e.message))}
     }
     if(!all.length&&tok===zoneToken){

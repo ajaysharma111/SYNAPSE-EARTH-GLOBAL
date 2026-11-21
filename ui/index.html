@@ -862,19 +862,17 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
     await Promise.all(chosen.map(async c=>{const h=routePeek(here,c,mode);c.route=h?await h:straightRoute(here,c,'route loading')}));
     if(tok!==zoneToken)return;
     if(!firstShown){firstShown=true;push('nearby')}
-    // 2) Route a wider shortlist, not just the nearest 14 by straight-line distance.
-    // Road networks can contain rivers, walls, one-way streets and disconnected segments;
-    // a nearby shelter can therefore have a much longer road journey than a slightly farther one.
-    // Process in small batches to avoid overwhelming public routing services.
-    const shortlist=chosen.slice(0,24);
-    for(let i=0;i<shortlist.length;i+=6){
-      const batch=shortlist.slice(i,i+6).filter(c=>c.route.status!=='CANDIDATE_ROUTE');
+    // Route the complete scored shortlist so the final choice is based on road travel,
+    // not just straight-line proximity. Batches keep public routing requests controlled.
+    const shortlist=chosen.slice(0,40);
+    for(let i=0;i<shortlist.length;i+=8){
+      const batch=shortlist.slice(i,i+8).filter(c=>c.route.status!=='CANDIDATE_ROUTE');
       if(batch.length)await Promise.all(batch.map(async c=>{c.route=await routeCached(here,c,mode)}));
       if(tok!==zoneToken)return;
-      if(i===0||i+6<shortlist.length)push('refining');
+      if(i===0||i+8<shortlist.length)push('refining');
     }
-    // mergeDests() now ranks these candidates using actual routed travel time,
-    // with a penalty for straight-line-only fallbacks and hazard-aware safety factors.
+    // mergeDests() selects the shortest confirmed road route and ranks mapped
+    // shelter options with hazard-aware elevation where that data is available.
     push(label);
   };
   try{
@@ -923,10 +921,37 @@ function mergeDests(off,on){
   res.sort((a,b)=>a.cost-b.cost);
   const top=res.slice(0,30);
   if(top.length){
-    if(!top.length)return top;top[0].badges.push('★ Best balance');
-    const short=[...top].sort((a,b)=>etaSeconds(a)-etaSeconds(b))[0];if(short!==top[0]||top.length>1)short.badges.push('⚡ Shortest');
-    const sh=top.filter(d=>d.tier==='shelter');
-    if(sh.length){const safe=[...sh].sort((a,b)=>(b.elevation_gain_m||0)-(a.elevation_gain_m||0)||a.cost-b.cost)[0];safe.badges.push('🛡 Safest');}
+    top[0].badges.push('★ Best balance');
+
+    // A straight-line estimate is not a reachable road route. If any candidate
+    // has a road route, only compare road-routed candidates for the Shortest badge.
+    const roadTop=top.filter(d=>d.route&&d.route.status==='CANDIDATE_ROUTE');
+    const shortestPool=roadTop.length?roadTop:top;
+    const short=[...shortestPool].sort((a,b)=>
+      etaSeconds(a)-etaSeconds(b)||
+      (a.route.distance_m||a.straight_line_m)-(b.route.distance_m||b.straight_line_m)
+    )[0];
+    if(short)short.badges.push(roadTop.length?'⚡ Shortest road route':'⚡ Shortest direct estimate');
+
+    // Safety is only a mapped-data proxy, never a guarantee of real-world safety.
+    // For flood/cyclone, prefer known higher-ground shelter records; otherwise
+    // prefer the best-ranked reachable mapped shelter.
+    const shelters=top.filter(d=>d.tier==='shelter');
+    const routedShelters=shelters.filter(d=>d.route&&d.route.status==='CANDIDATE_ROUTE');
+    const safePool=routedShelters.length?routedShelters:shelters;
+    if(safePool.length){
+      const highGroundHazard=hazard==='Flood'||hazard==='Cyclone';
+      const safe=[...safePool].sort((a,b)=>{
+        if(highGroundHazard){
+          const ag=a.elevation_gain_m,bg=b.elevation_gain_m;
+          if(ag!=null&&bg==null)return -1;
+          if(ag==null&&bg!=null)return 1;
+          if(ag!=null&&bg!=null&&ag!==bg)return bg-ag;
+        }
+        return a.cost-b.cost||etaSeconds(a)-etaSeconds(b);
+      })[0];
+      safe.badges.push('🛡 Safest mapped shelter');
+    }
   }
   return top;
 }

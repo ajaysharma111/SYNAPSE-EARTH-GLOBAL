@@ -751,13 +751,18 @@ function classify(t){
     if(g('public_transport')||g('highway')==='bus_stop'||g('bus')==='yes')return null;
     if(['picnic_shelter','weather_shelter','public_transport','basic_hut','lean_to','gazebo','rock_shelter','bus_stop','wildlife_hide','field_shelter'].includes(st))return null;
     return 'shelter'}
-  if(['hospital','clinic'].includes(g('amenity'))||['hospital','clinic'].includes(g('healthcare'))||['hospital','clinic'].includes(g('type')))return 'medical';
+  // OSM healthcare facilities use several valid tag families. In India,
+  // healthcare=centre/health_centre and amenity=doctors/health_post are common;
+  // include them so nearby mapped hospitals and clinics are not silently missed.
+  if(['hospital','clinic','doctors','health_post'].includes(g('amenity'))||
+     ['hospital','clinic','doctor','doctors','health_centre','centre','health_post'].includes(g('healthcare'))||
+     ['hospital','clinic','doctors','health_post'].includes(g('type')))return 'medical';
   if(['community_centre','townhall','fire_station'].includes(g('amenity'))||['community_centre','townhall','fire_station'].includes(g('type')))return 'refuge';
   return null;
 }
 function overpassQ(lat,lon,rs,ro,to){
   const a=`(around:${rs},${lat.toFixed(6)},${lon.toFixed(6)})`,b=`(around:${ro},${lat.toFixed(6)},${lon.toFixed(6)})`;
-  return `[out:json][timeout:${to}];(nwr${a}["emergency"~"^(assembly_point|shelter|emergency_shelter)$"];nwr${a}["amenity"~"^(evacuation_centre|evacuation_center)$"];nwr${a}["amenity"="shelter"]["shelter_type"!~"^(picnic_shelter|weather_shelter|public_transport|basic_hut|lean_to|gazebo|rock_shelter)$"]["public_transport"!~"."]["highway"!~"."];)->.s;(nwr${b}["amenity"~"^(hospital|clinic)$"];nwr${b}["healthcare"~"^(hospital|clinic)$"];nwr${b}["amenity"~"^(community_centre|townhall|fire_station)$"];)->.o;.s out tags center qt 120;.o out tags center qt 120;`;
+  return `[out:json][timeout:${to}];(nwr${a}["emergency"~"^(assembly_point|shelter|emergency_shelter)$"];nwr${a}["amenity"~"^(evacuation_centre|evacuation_center)$"];nwr${a}["amenity"="shelter"]["shelter_type"!~"^(picnic_shelter|weather_shelter|public_transport|basic_hut|lean_to|gazebo|rock_shelter)$"]["public_transport"!~"."]["highway"!~"."];)->.s;(nwr${b}["amenity"~"^(hospital|clinic|doctors|health_post)$"];nwr${b}["healthcare"~"^(hospital|clinic|doctor|doctors|health_centre|centre|health_post)$"];nwr${b}["amenity"~"^(community_centre|townhall|fire_station)$"];)->.o;.s out tags center qt 120;.o out tags center qt 120;`;
 }
 async function overpassCandidates(lat,lon,rs,ro,to,signal){
   const q=overpassQ(lat,lon,rs,ro,to);
@@ -918,7 +923,17 @@ function mergeDests(off,on){
   const hz=$('kind').value;
   const res=out.filter(d=>!S.unavailable.has(d.id)&&!S.visited.has(d.id));
   res.forEach(d=>{d.cost=rankCost(d,hz);d.badges=[]});
-  res.sort((a,b)=>a.cost-b.cost);
+  // Sort by actual road ETA first: category multipliers must not hide a
+  // genuinely closer reachable hospital/clinic behind a farther shelter.
+  // Direct-line estimates remain behind all candidates with a real road route.
+  res.sort((a,b)=>{
+    const ar=a.route&&a.route.status==='CANDIDATE_ROUTE',br=b.route&&b.route.status==='CANDIDATE_ROUTE';
+    if(ar!==br)return ar?-1:1;
+    const at=etaSeconds(a),bt=etaSeconds(b);
+    return at-bt||
+      (a.route.distance_m||a.straight_line_m)-(b.route.distance_m||b.straight_line_m)||
+      a.cost-b.cost;
+  });
   const top=res.slice(0,30);
   if(top.length){
     top[0].badges.push('★ Best balance');

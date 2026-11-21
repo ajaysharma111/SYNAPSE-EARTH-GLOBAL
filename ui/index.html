@@ -795,8 +795,16 @@ function pickC(cands,hazard,userElev,elev){
     let sc=c.straight_line_m*mult[c.tier];const notes=[];
     if((hazard==='Flood'||hazard==='Cyclone')&&gain!=null){if(gain>=5){sc*=.8;notes.push('higher ground (+'+gain+' m)')}else if(gain<=-5){sc*=1.6;notes.push('lower than you ('+gain+' m) — avoid for '+hazard.toLowerCase())}}
     c.notes=notes;c.score=Math.round(sc);c.tier_label=TIER_LABELS[c.tier];c.verification='Mapped record only: opening status, capacity, hazard exposure and safety are NOT verified.'});
-  // v16 policy: never hide mapped alternatives behind category quotas; rank purely by score, then by distance
-  return cands.sort((a,b)=>a.score-b.score||a.straight_line_m-b.straight_line_m).slice(0,40);
+  // Keep the 30 best overall candidates plus the 10 nearest medical facilities.
+  // This guarantees a nearby mapped hospital/clinic is road-routed even in areas
+  // where many shelters would otherwise fill the shortlist before medical places.
+  const ranked=cands.sort((a,b)=>a.score-b.score||a.straight_line_m-b.straight_line_m);
+  const selected=ranked.slice(0,30);
+  const ids=new Set(selected.map(c=>c.id));
+  ranked.filter(c=>c.tier==='medical').slice(0,10).forEach(c=>{
+    if(!ids.has(c.id)){ids.add(c.id);selected.push(c)}
+  });
+  return selected;
 }
 function bearingTxt(la1,lo1,la2,lo2){const p=Math.PI/180,y=Math.sin((lo2-lo1)*p)*Math.cos(la2*p),x=Math.cos(la1*p)*Math.sin(la2*p)-Math.sin(la1*p)*Math.cos(la2*p)*Math.cos((lo2-lo1)*p);const d=(Math.atan2(y,x)/p+360)%360;return ['N','NE','E','SE','S','SW','W','NW'][Math.floor((d+22.5)/45)%8]+' ('+Math.round(d)+'°)'}
 function stepText(s){const m=s.maneuver||{},t=m.type||'',mod=m.modifier||'',n=s.name||'the road';

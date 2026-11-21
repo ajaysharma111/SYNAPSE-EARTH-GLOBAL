@@ -3,25 +3,21 @@ services:
     name: synapse-earth-global
     runtime: python
     plan: free
-    # Maps are installed automatically: at BUILD time (below) and again in the background when the server starts.
-    # Nobody has to press Install. India is fetched first (SYNAPSE_PREFETCH_FIRST), then every other country,
-    # skipping extracts bigger than SYNAPSE_PREFETCH_MAX_MB and anything already on disk.
-    buildCommand: pip install -r requirements.txt && python scripts/prefetch_regions.py --scope all --max-mb 150 --time-limit 1500
+
+    # Keep the free 512 MB instance lightweight. Regional map extraction is
+    # intentionally disabled on the web server; map packages must be managed
+    # separately rather than downloaded/processed during every deployment.
+    buildCommand: pip install -r requirements.txt
     startCommand: python -m synapse.server
+
     envVars:
       - key: SYNAPSE_PREFETCH
-        value: all
-      - key: SYNAPSE_PREFETCH_FIRST
-        value: IN
-      - key: SYNAPSE_PREFETCH_MAX_MB
-        value: "150"
-      - key: TAVILY_API_KEY          # optional: enables the live freshness check
+        value: "off"
+      - key: SYNAPSE_ALLOW_INSTALL
+        value: "0"
+      - key: TAVILY_API_KEY
         sync: false
-      - key: BIFROST_URL            # optional: AI judge through a Bifrost gateway
+      - key: BIFROST_URL
         sync: false
       - key: BIFROST_MODELS
         sync: false
-      - key: SYNAPSE_ALLOW_INSTALL   # visitors cannot trigger downloads
-        value: "0"
-# Free Render disk is wiped on each deploy, so very large worlds will not fit/persist. For permanent storage attach
-# a persistent disk at /var/data and set SYNAPSE_DATA=/var/data and SYNAPSE_PERSISTENT=1.

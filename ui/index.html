@@ -862,14 +862,19 @@ async function onlineSearch(lat,lon,hazard,mode,onUpdate,tok){
     await Promise.all(chosen.map(async c=>{const h=routePeek(here,c,mode);c.route=h?await h:straightRoute(here,c,'route loading')}));
     if(tok!==zoneToken)return;
     if(!firstShown){firstShown=true;push('nearby')}
-    // 2) ask for every road route at once (as before), but refresh the list as soon as the closest six are in
-    const pending=chosen.slice(0,14).filter(c=>c.route.status!=='CANDIDATE_ROUTE').map(c=>routeCached(here,c,mode).then(r=>{c.route=r}));
-    if(pending.length){
-      const early=Promise.all(chosen.slice(0,6).filter(c=>c.route.status!=='CANDIDATE_ROUTE').map(c=>routeCached(here,c,mode).then(r=>{c.route=r})));
-      if(chosen.length>6)early.then(()=>push('refining'));
-      await Promise.all(pending);
+    // 2) Route a wider shortlist, not just the nearest 14 by straight-line distance.
+    // Road networks can contain rivers, walls, one-way streets and disconnected segments;
+    // a nearby shelter can therefore have a much longer road journey than a slightly farther one.
+    // Process in small batches to avoid overwhelming public routing services.
+    const shortlist=chosen.slice(0,24);
+    for(let i=0;i<shortlist.length;i+=6){
+      const batch=shortlist.slice(i,i+6).filter(c=>c.route.status!=='CANDIDATE_ROUTE');
+      if(batch.length)await Promise.all(batch.map(async c=>{c.route=await routeCached(here,c,mode)}));
       if(tok!==zoneToken)return;
+      if(i===0||i+6<shortlist.length)push('refining');
     }
+    // mergeDests() now ranks these candidates using actual routed travel time,
+    // with a penalty for straight-line-only fallbacks and hazard-aware safety factors.
     push(label);
   };
   try{
